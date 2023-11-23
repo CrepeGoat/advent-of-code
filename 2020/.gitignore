@@ -1,0 +1,7 @@
+# Specify filepatterns you want git to ignore.
+venv*/*
+**/__pycache__/*
+.hypothesis/*
+
+Cargo.lock
+AoC2020-rust/target/*
