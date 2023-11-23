@@ -1,0 +1,17 @@
+[package]
+name = "advent-of-code-2021"
+version = "0.1.0"
+edition = "2018"
+
+[lib]
+name = "aoc_lib"
+path = "src/lib.rs"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+itertools = "0.10.1"
+nom = "7.1.0"
+
+[dev-dependencies]
+rstest = "0.12.0"
