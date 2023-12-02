@@ -2,3 +2,7 @@
 
 # Sublime files
 *.sublime-workspace
+
+# Roc files
+main
+input.txt
