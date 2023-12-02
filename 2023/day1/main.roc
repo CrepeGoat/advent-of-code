@@ -80,12 +80,19 @@ indentLines = \inputStr ->
     |> List.map (\line -> Str.concat "\t" line)
     |> Str.joinWith "\n"
 
-# day 1 logic
+# ###############################################################################
+# Day 1 Logic
+# ###############################################################################
 expect
     "1abc2\npqr3stu8vwx\na1b2c3d4e5f\ntreb7uchet"
     |> parseInput
     |> calibrateTrebuchet
     == Ok 142
+expect
+    "two1nine\neightwothree\nabcone2threexyz\nxtwone3four\n4nineeightseven2\nzoneight234\n7pqrstsixteen"
+    |> parseInput
+    |> calibrateTrebuchet
+    == Ok 281
 
 parseInput : Str -> List (List Str)
 parseInput = \input ->
@@ -94,51 +101,96 @@ parseInput = \input ->
     |> List.dropIf Str.isEmpty
     |> List.map Str.graphemes
 
-calibrateTrebuchet : List (List Str) -> Result U32 [ListWasEmpty]
+calibrateTrebuchet : List (List Str) -> Result U32 [NoDigitsInLine]
 calibrateTrebuchet = \input ->
     input
     |> List.mapTry calculateLine
     |> Result.map List.sum
 
-calculateLine : List Str -> Result U32 [ListWasEmpty]
+calculateLine : List Str -> Result U32 [NoDigitsInLine]
 calculateLine = \line ->
-    lineDigits = List.keepIf line graphemeIsDigit
-
+    lineStripped = line |> dropLeadingNonDigits |> dropTrailingNonDigits
     firstDigit <-
-        lineDigits
-        |> List.first
-        |> Result.try digitToNum
-        |> Result.map Num.toU32
-        |> Result.try
+        digits
+        |> List.findFirst (\digit -> List.startsWith lineStripped digit)
+        |> Result.mapErr (\_ -> NoDigitsInLine)
+        |> Result.try  # `try` here because we will generate `Err`'s later
     lastDigit <-
-        lineDigits
-        |> List.last
-        |> Result.try digitToNum
-        |> Result.map Num.toU32
-        |> Result.map
+        digits
+        |> List.findFirst (\digit -> List.endsWith lineStripped digit)
+        |> Result.mapErr (\_ -> NoDigitsInLine)
+        |> Result.map  # `map` here because we will only generate `U32`'s from here on out
 
-    (firstDigit * 10) + (lastDigit)
+    firstValue = Dict.get digitsToValues firstDigit |> okOrCrash "digit validity already confirmed"
+    lastValue = Dict.get digitsToValues lastDigit |> okOrCrash "digit validity already confirmed"
 
-digitToNum : Str -> Result U8 [ListWasEmpty]
-digitToNum = \grapheme ->
-    utf8Value <- grapheme |> Str.toUtf8 |> List.first |> Result.map
-    utf8Offset =
-        when ("0" |> Str.toUtf8 |> List.first) is
-            Ok value -> value
-            _ -> crash "literal value is known to be non-empty"
-    utf8Value - utf8Offset
+    (firstValue * 10) + lastValue
 
-graphemeIsDigit : Str -> Bool
-graphemeIsDigit = \grapheme ->
-    utf8Lower =
-        when ("0" |> Str.toUtf8 |> List.first) is
-            Ok value -> value
-            _ -> crash "literal value is known to be non-empty"
-    utf8Upper =
-        when ("9" |> Str.toUtf8 |> List.first) is
-            Ok value -> value
-            _ -> crash "literal value is known to be non-empty"
+dropLeadingNonDigits : List Str -> List Str
+dropLeadingNonDigits = \graphemes ->
+    if List.isEmpty graphemes || List.any digits \digit -> List.startsWith graphemes digit then
+        graphemes
+    else
+        graphemes |> List.dropFirst 1 |> dropLeadingNonDigits
 
-    when grapheme |> Str.toUtf8 |> List.first is
-        Ok utf8Value -> (utf8Lower <= utf8Value) && (utf8Value <= utf8Upper)
-        _ -> Bool.false
+dropTrailingNonDigits : List Str -> List Str
+dropTrailingNonDigits = \graphemes ->
+    if List.isEmpty graphemes || List.any digits \digit -> List.endsWith graphemes digit then
+        graphemes
+    else
+        graphemes |> List.dropLast 1 |> dropTrailingNonDigits
+
+expect List.all digits \digit -> Dict.contains digitsToValues digit
+digits =
+    [
+        "0",
+        "1",
+        "2",
+        "3",
+        "4",
+        "5",
+        "6",
+        "7",
+        "8",
+        "9",
+        "zero",
+        "one",
+        "two",
+        "three",
+        "four",
+        "five",
+        "six",
+        "seven",
+        "eight",
+        "nine",
+    ]
+    |> List.map Str.graphemes
+
+digitsToValues =
+    Dict.empty {}
+    |> Dict.insert (Str.graphemes "0") 0
+    |> Dict.insert (Str.graphemes "1") 1
+    |> Dict.insert (Str.graphemes "2") 2
+    |> Dict.insert (Str.graphemes "3") 3
+    |> Dict.insert (Str.graphemes "4") 4
+    |> Dict.insert (Str.graphemes "5") 5
+    |> Dict.insert (Str.graphemes "6") 6
+    |> Dict.insert (Str.graphemes "7") 7
+    |> Dict.insert (Str.graphemes "8") 8
+    |> Dict.insert (Str.graphemes "9") 9
+    |> Dict.insert (Str.graphemes "zero") 0
+    |> Dict.insert (Str.graphemes "one") 1
+    |> Dict.insert (Str.graphemes "two") 2
+    |> Dict.insert (Str.graphemes "three") 3
+    |> Dict.insert (Str.graphemes "four") 4
+    |> Dict.insert (Str.graphemes "five") 5
+    |> Dict.insert (Str.graphemes "six") 6
+    |> Dict.insert (Str.graphemes "seven") 7
+    |> Dict.insert (Str.graphemes "eight") 8
+    |> Dict.insert (Str.graphemes "nine") 9
+
+okOrCrash : Result a *, Str -> a
+okOrCrash = \result, crashMsg ->
+    when result is
+        Ok value -> value
+        _ -> crash crashMsg
