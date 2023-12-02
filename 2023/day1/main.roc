@@ -128,25 +128,17 @@ calculateLine = \line ->
 
 dropLeadingNonDigits : List Str -> List Str
 dropLeadingNonDigits = \graphemes ->
-    result = 
-        if List.isEmpty graphemes || List.any digits \digit -> List.startsWith graphemes digit then
-            graphemes
-        else
-            graphemes |> List.dropFirst 1 |> dropLeadingNonDigits
-
-    expect List.isEmpty result || List.any digits \digit -> List.startsWith result digit
-    result
+    if List.isEmpty graphemes || List.any digits \digit -> List.startsWith graphemes digit then
+        graphemes
+    else
+        graphemes |> List.dropFirst 1 |> dropLeadingNonDigits
 
 dropTrailingNonDigits : List Str -> List Str
 dropTrailingNonDigits = \graphemes ->
-    result = 
-        if List.isEmpty graphemes || List.any digits \digit -> List.endsWith graphemes digit then
-            graphemes
-        else
-            graphemes |> List.dropLast 1 |> dropTrailingNonDigits
-
-    expect List.isEmpty result || List.any digits \digit -> List.endsWith result digit
-    result
+    if List.isEmpty graphemes || List.any digits \digit -> List.endsWith graphemes digit then
+        graphemes
+    else
+        graphemes |> List.dropLast 1 |> dropTrailingNonDigits
 
 expect List.all digits \digit -> Dict.contains digitsToValues digit
 digits =
