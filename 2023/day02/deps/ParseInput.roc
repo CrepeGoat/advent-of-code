@@ -1,14 +1,15 @@
-package ParseInput
-    exposes [
-        parseInput,
-        Game,
-        ColorCubes,
-    ]
-    packages {
-        parse: "https://github.com/lukewilliamboswell/roc-parser/releases/download/0.3.0/-e3ebWWmlFPfe9fYrr2z1urfslzygbtQQsl69iH1qzQ.tar.br",
-    }
+interface ParseInput
+    exposes [parseInput, Game, ColorCubes]
     imports [
-        parse.*,
+        parse.const,
+        parse.codepoint,
+        parse.many,
+        parse.keep,
+        parse.digits,
+        parse.skip,
+        parse.string,
+        parse.oneOf,
+        parse.sepBy
     ]
 
 Game := { id : U32, rounds : List ColorCubes }

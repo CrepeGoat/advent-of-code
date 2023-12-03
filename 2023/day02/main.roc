@@ -3,7 +3,7 @@
 app "day2"
     packages {
         pf: "https://github.com/roc-lang/basic-cli/releases/download/0.7.0/bkGby8jb0tmZYsy2hg1E_B2QrCgcSTxdUlHtETwm5m4.tar.br",
-        ParseInput: "./ParseInput.roc",
+        deps: "deps/main.roc",
     }
     imports [
         pf.Stdout,
@@ -12,9 +12,9 @@ app "day2"
         pf.Path,
         pf.Task,
         pf.Arg,
-        ParseInput.Game,
-        ParseInput.ColorCubes,
-        ParseInput.parseInput,
+        deps.Game,
+        deps.ColorCubes,
+        deps.parseInput,
     ]
     provides [main] to pf
 
