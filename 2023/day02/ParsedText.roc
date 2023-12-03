@@ -1,8 +1,10 @@
 interface ParsedText
     exposes [text]
     imports [
-        parse.parseStr,
-        parse.string,
+        parse.String.{ parseStr, string },
     ]
 
-text = parseStr (string "text") "text" == Ok "text"
+text =
+    when parseStr (string "text") "text" is
+        Ok value -> value
+        Err _ -> crash "not today!"
