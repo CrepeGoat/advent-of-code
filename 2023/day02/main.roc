@@ -7,9 +7,15 @@ app "day2"
     }
     imports [
         pf.Stdout,
-        ParsedText.{ text },
+        parse.parseStr,
+        parse.string,
     ]
     provides [main] to pf
 
 main =
     Stdout.line text
+
+text =
+    when parseStr (string "text") "text" is
+        Ok value -> value
+        Err _ -> crash "not today!"
