@@ -33,7 +33,6 @@ main =
             _ -> crash "failed to solve for input"
     Stdout.line "result: \(Num.toStr result)"
 
-
 # ###############################################################################
 # Day 2 Logic
 # ###############################################################################
@@ -48,13 +47,11 @@ expect
     """
     |> parseInput
     |> Result.try solve
-    == Ok 8
+    == Ok 2286
 
 solve : List Game -> Result U32 [DuplicateColorInRound Str]
 solve = \games ->
-    cubeLimits = { red: 12u32, green: 13u32, blue: 14u32 }
-
-    prevIdSum, game <- games |> List.walkTry 0u32
+    prevSum, game <- games |> List.walkTry 0u32
 
     cubeMaxesOrErr =
         prevCubeMaxes, round <- game.rounds |> List.walkTry { red: 0u32, green: 0u32, blue: 0u32 }
@@ -82,13 +79,10 @@ solve = \games ->
         }
 
     cubeMaxes <- cubeMaxesOrErr |> Result.map
+    cubeProduct = cubeMaxes.red * cubeMaxes.green * cubeMaxes.blue
+    dbg cubeProduct
 
-    isPossibleGame =
-        (cubeMaxes.red <= cubeLimits.red)
-        && (cubeMaxes.green <= cubeLimits.green)
-        && (cubeMaxes.blue <= cubeLimits.blue)
-
-    if isPossibleGame then prevIdSum + game.id else prevIdSum
+    prevSum + cubeProduct
 
 dictGetWithDefault = \dict, key, default ->
     if Dict.contains dict key then
