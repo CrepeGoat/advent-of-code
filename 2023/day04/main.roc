@@ -17,7 +17,7 @@ app "day4"
             Card,
         },
         ReadInput.{ readFileAndThen },
-        Solution.{ solve },
+        Solution2.{ solve },
     ]
     provides [main] to pf
 
