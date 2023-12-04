@@ -53,70 +53,84 @@ expect
     testInput
     |> parse
     |> Result.map solve
-    == Ok 4361
+    == Ok 467835
 
 solve : Schematic -> U32
 solve = \schematic ->
-    schematicNumbers = getSchematicNumbers schematic
-    symbolsByPosition = getSymbolsByPosition schematic
+    numbersAtSpaces =
+        schematic
+        |> getSchematicNumbers
+        |> getSpacesOccupiedByNumbers
+    schematicGearSymbols =
+        schematic
+        |> getSchematicSymbols
+        |> List.keepIf \sym -> sym.symbol == '*'
 
-    schematicNumbers
-    |> List.dropIf (\numPos -> symbolsByPosition |> getAdjacentSymbols numPos |> List.isEmpty)
-    |> List.map .value
-    |> List.sum
+    adjNumbers =
+        sym <- schematicGearSymbols |> List.map
+        adjPos <- sym |> .pos |> getAdjacentPositions |> List.keepOks
+        numbersAtSpaces |> Dict.get adjPos
 
-getAdjacentSymbols : SymbolsByPosition, SchematicNumber -> List ((Nat, Nat), U8)
-getAdjacentSymbols = \symbolsByPosition, schematicNumber ->
-    adjPos <-
-        schematicNumber
-        |> getAdjacentPositions
-        |> List.keepOks
+    gearRatios =
+        adjNums <- adjNumbers |> List.keepOks
+        when adjNums |> Set.fromList |> Set.toList is
+            [num1, num2] -> Ok (num1.value * num2.value)
+            _ -> Err {}
 
-    symbol <-
-        symbolsByPosition
-        |> Dict.get adjPos
-        |> Result.map
+    gearRatios |> List.sum
 
-    (adjPos, symbol)
+getAdjacentNumbers : Dict Position U32, Position -> List U32
+getAdjacentNumbers = \numbersAtSpaces, pos ->
+    adjPos <- pos |> getAdjacentPositions |> List.keepOks
+
+    Dict.get numbersAtSpaces adjPos
 
 expect
-    { pos: (1, 1), len: 1, value: 0 }
+    (1, 1)
     |> getAdjacentPositions
     |> List.sortWith comparePos
     == [(0, 0), (0, 1), (0, 2), (1, 0), (1, 2), (2, 0), (2, 1), (2, 2)]
 
 expect
-    { pos: (1, 1), len: 2, value: 0 }
-    |> getAdjacentPositions
-    |> List.sortWith comparePos
-    == [(0, 0), (0, 1), (0, 2), (0, 3), (1, 0), (1, 3), (2, 0), (2, 1), (2, 2), (2, 3)]
-
-expect
-    { pos: (0, 1), len: 1, value: 0 }
+    (0, 1)
     |> getAdjacentPositions
     |> List.sortWith comparePos
     == [(0, 0), (0, 2), (1, 0), (1, 1), (1, 2)]
 
-getAdjacentPositions : SchematicNumber -> List (Nat, Nat)
-getAdjacentPositions = \{ pos: (rowPos, colPos), len, value } ->
-    colRange = List.range { start: At colPos, end: Before (colPos + len) }
+getAdjacentPositions : Position -> List Position
+getAdjacentPositions = \(rowPos, colPos) ->
+    colRange = List.range { start: At colPos, end: Before (colPos + 1) }
 
     List.join [
-        List.map colRange \colNum -> (Num.subChecked rowPos 1, Ok colNum),
-        List.map colRange \colNum -> (Ok (rowPos + 1), Ok colNum),
+        [
+            (Num.subChecked rowPos 1, Ok colPos),
+            (Ok (rowPos + 1), Ok colPos),
+        ],
         [
             (Num.subChecked rowPos 1, Num.subChecked colPos 1),
             (Ok rowPos, Num.subChecked colPos 1),
             (Ok (rowPos + 1), Num.subChecked colPos 1),
         ],
         [
-            (Num.subChecked rowPos 1, Ok (colPos + len)),
-            (Ok rowPos, Ok (colPos + len)),
-            (Ok (rowPos + 1), Ok (colPos + len)),
+            (Num.subChecked rowPos 1, Ok (colPos + 1)),
+            (Ok rowPos, Ok (colPos + 1)),
+            (Ok (rowPos + 1), Ok (colPos + 1)),
         ],
     ]
     |> List.keepIf (\(rowNumOrErr, colNumOrErr) -> List.all [rowNumOrErr, colNumOrErr] Result.isOk)
     |> List.map \(rowNumOk, colNumOk) -> (okOrCrash rowNumOk "confirmed ok", okOrCrash colNumOk "confirmed ok")
+
+getSpacesOccupiedByNumbers : List SchematicNumber -> Dict Position SchematicNumber
+getSpacesOccupiedByNumbers = \schematicNumbers ->
+    prevSpacesMid, { pos: (rowPos, colPos), len, value } <-
+        schematicNumbers |> List.walk (Dict.empty {})
+
+    prevSpaces, numPos <-
+        List.range { start: At colPos, end: Length len }
+        |> List.map \colNum -> (rowPos, colNum)
+        |> List.walk prevSpacesMid
+
+    Dict.insert prevSpaces numPos { pos: (rowPos, colPos), len, value }
 
 expect
     testInput
@@ -139,7 +153,7 @@ expect
 getSchematicNumbers : Schematic -> List SchematicNumber
 getSchematicNumbers = \schematic ->
     WalkState : {
-        state : [None, PartialNumber (Nat, Nat) U32],
+        state : [None, PartialNumber Position U32],
         index : List SchematicNumber,
     }
 
@@ -196,13 +210,6 @@ getSchematicNumbers = \schematic ->
 
     endState.index
 
-getSymbolsByPosition : Schematic -> SymbolsByPosition
-getSymbolsByPosition = \schematic ->
-    schematic
-    |> getSchematicSymbols
-    |> List.map \ss -> (ss.pos, ss.symbol)
-    |> Dict.fromList
-
 expect
     testInput
     |> parse
@@ -221,14 +228,16 @@ getSchematicSymbols = \schematic ->
         Symbol symbol -> prevPositions |> List.append { pos: (rowNum, colNum), symbol }
         _ -> prevPositions
 
-SchematicNumber : { pos : (Nat, Nat), len : Nat, value : U32 }
-SchematicSymbol : { pos : (Nat, Nat), symbol : U8 }
-SymbolsByPosition : Dict (Nat, Nat) U8
+SchematicNumber : { pos : Position, len : Nat, value : U32 }
+SchematicSymbol : { pos : Position, symbol : U8 }
+SymbolsByPosition : Dict Position U8
 
 comparePos = \(r1, c1), (r2, c2) ->
     when (Num.compare r1 r2, Num.compare c1 c2) is
         (EQ, cmp) -> cmp
         (cmp, _) -> cmp
+
+Position : (Nat, Nat)
 
 okOrCrash : Result a *, Str -> a
 okOrCrash = \result, crashMsg ->
