@@ -1,5 +1,3 @@
-# references
-# - https://github.com/roc-lang/examples/tree/main/examples/CommandLineArgs
 app "day4"
     packages {
         pf: "https://github.com/roc-lang/basic-cli/releases/download/0.7.0/bkGby8jb0tmZYsy2hg1E_B2QrCgcSTxdUlHtETwm5m4.tar.br",
@@ -7,27 +5,13 @@ app "day4"
     }
     imports [
         pf.Stdout,
-        pf.Stderr,
-        pf.File,
-        pf.Path,
         pf.Task,
-        pf.Arg,
         ParseInput.{
             parse,
-            Schematic,
         },
-        ReadInput.{ readFileAndThen },
-        Solution.{ solve },
     ]
     provides [main] to pf
 
 main : Task.Task {} I32
 main =
-    fileContentStr <- readFileAndThen
-    parsedInput =
-        when parse fileContentStr is
-            Ok value -> value
-            Err _ -> crash "failed to parse input"
-
-    result = solve parsedInput
-    Stdout.line "result: \(Num.toStr result)"
+    Stdout.line "parse: \(parse)"
