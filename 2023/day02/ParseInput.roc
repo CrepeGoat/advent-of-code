@@ -1,5 +1,5 @@
 interface ParseInput
-    exposes [parseInput, Game, ColorCubes]
+    exposes [parseInput, Game]
     imports [
         parse.Core.{
             Parser,

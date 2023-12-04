@@ -3,7 +3,6 @@
 interface ReadInput
     exposes [readFileAndThen]
     imports [
-        pf.Stdout,
         pf.Stderr,
         pf.File,
         pf.Path,
