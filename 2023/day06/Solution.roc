@@ -10,12 +10,12 @@ expect
     |> Result.map solve
     == Ok 288
 
-solve : Document -> U32
+solve : Document -> U64
 solve = \document ->
     List.map2 document.times document.distances countWinStrats
     |> List.product
 
-countWinStrats : U32, U32 -> U32
+countWinStrats : U64, U64 -> U64
 countWinStrats = \timeLimit, minDistance ->
     t1Underestimate =
         timeLimit
@@ -42,7 +42,7 @@ expect
     |> sqrtCeil
     == 234
 
-sqrtCeil : U32 -> U32
+sqrtCeil : U64 -> U64
 sqrtCeil = \n ->
     if n == 0 then 0 else n |> Num.sub 1 |> sqrtTrunc |> Num.add 1
 
@@ -54,7 +54,7 @@ expect
     == 233
 
 # https://en.wikipedia.org/wiki/Integer_square_root#Digit-by-digit_algorithm
-sqrtTrunc : U32 -> U32
+sqrtTrunc : U64 -> U64
 sqrtTrunc = \n ->
     if n <= 1 then
         n
@@ -64,7 +64,7 @@ sqrtTrunc = \n ->
 
         if rootGuess2 * rootGuess2 <= n then rootGuess2 else rootGuess
 
-calculateDistance : { time : U32, timeLimit : U32 } -> U32
+calculateDistance : { time : U64, timeLimit : U64 } -> U64
 calculateDistance = \{ time, timeLimit } ->
     time * (timeLimit - time)
 

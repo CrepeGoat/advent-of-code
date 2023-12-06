@@ -30,7 +30,7 @@ expect
     == Ok { times: [7, 15, 30], distances: [9, 40, 200] }
 
 Input : Document
-Document : { times : List U32, distances : List U32 }
+Document : { times : List U64, distances : List U64 }
 
 parse : Str -> Result Input _
 parse = \text -> parseStr parseInput text
@@ -40,17 +40,17 @@ parseInput =
     space = codeunit ' '
     anySpace = space |> many
     newline = codeunit '\n'
-    u32Digits = const Num.toU32 |> keep digits
+    u64Digits = const Num.toU64 |> keep digits
 
     document =
         const (\times -> \distances -> { times, distances })
         |> skip (string "Time:")
         |> skip anySpace
-        |> keep (u32Digits |> sepBy anySpace)
+        |> keep (u64Digits |> sepBy anySpace)
         |> skip newline
         |> skip (string "Distance:")
         |> skip anySpace
-        |> keep (u32Digits |> sepBy anySpace)
+        |> keep (u64Digits |> sepBy anySpace)
 
     document |> skip (newline |> many)
 
