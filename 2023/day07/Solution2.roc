@@ -55,12 +55,12 @@ countCardsWithWilds = \cards ->
     cardCounts = countItems cards
 
     (cardCountsNoWilds, wildCount) =
-        wildCountMid =
+        wildCount =
             when Dict.get cardCounts JACK is
                 Ok count -> count
                 Err _ -> 0
 
-        (Dict.remove cardCounts JACK, wildCountMid)
+        (Dict.remove cardCounts JACK, wildCount)
 
     majorityCard =
         cardCountsNoWilds
