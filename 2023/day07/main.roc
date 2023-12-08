@@ -3,7 +3,6 @@
 app "day4"
     packages {
         pf: "https://github.com/roc-lang/basic-cli/releases/download/0.7.0/bkGby8jb0tmZYsy2hg1E_B2QrCgcSTxdUlHtETwm5m4.tar.br",
-        parse: "https://github.com/lukewilliamboswell/roc-parser/releases/download/0.3.0/-e3ebWWmlFPfe9fYrr2z1urfslzygbtQQsl69iH1qzQ.tar.br",
     }
     imports [
         pf.Stdout,
@@ -12,20 +11,29 @@ app "day4"
         pf.Path,
         pf.Task,
         pf.Arg,
-        ParseInput.{ parse },
-        ReadInput.{ readFileAndThen },
-        Solution2.{ solve },
     ]
     provides [main] to pf
 
 main : Task.Task {} I32
 main =
-    fileContentStr <- readFileAndThen
-    parsedInput =
-        when parse fileContentStr is
-            Ok value -> value
-            Err (ParsingFailure msg) -> crash "failed to parse input: \(msg)"
-            Err (ParsingIncomplete msg) -> crash "only parsed partial input: \(msg)"
+    Stdout.line "hello"
 
-    result = solve parsedInput
-    Stdout.line "result: \(Num.toStr result)"
+brokenFunc : Dict U32 Nat -> Dict U32 Nat
+brokenFunc = \itemCounts ->
+    (itemCountsNo11s, count11s) = # error
+        count11s = # error
+            when Dict.get itemCounts 11 is
+                Ok count -> count
+                Err _ -> 0
+
+        (Dict.remove itemCounts 11, count11s)
+
+    majorityItem =
+        itemCountsNo11s
+        |> Dict.toList
+        |> List.sortWith \(i1, c1), (i2, c2) -> Num.compare c2 c1
+
+    majorityItemEntry <- Dict.update itemCountsNo11s majorityItem
+    when majorityItemEntry is
+        Present count -> count + count11s
+        Missing -> crash "already checked that this item is present"
