@@ -1,5 +1,5 @@
 interface ParseInput
-    exposes [parse, TileGrid, Cardinal]
+    exposes [parse, TileGrid, Tile, Cardinal]
     imports [
         parse.Core.{
             Parser,
