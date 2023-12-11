@@ -4,51 +4,51 @@ interface Solution2
         ParseInput.{ parse, Image, Body },
     ]
 
-expect
-    testInput =
-        """
-        ...#......
-        .......#..
-        #.........
-        ..........
-        ......#...
-        .#........
-        .........#
-        ..........
-        .......#..
-        #...#.....
+solve = \image -> solveWithExpansion image 1000000
 
-        """
+testInput =
+    """
+    ...#......
+    .......#..
+    #.........
+    ..........
+    ......#...
+    .#........
+    .........#
+    ..........
+    .......#..
+    #...#.....
+
+    """
+expect
     result =
         testInput
         |> parse
-        |> Result.map solve
+        |> Result.map \image -> solveWithExpansion image 2
     result == Ok 374
 expect
-    testInput =
-        """
-        ...#
-        ....
-        #...
-
-        """
     result =
         testInput
         |> parse
-        |> Result.map solve
-    result == Ok 8
-
-solve : Image -> Nat
-solve = \image ->
+        |> Result.map \image -> solveWithExpansion image 10
+    result == Ok 1030
+expect
+    result =
+        testInput
+        |> parse
+        |> Result.map \image -> solveWithExpansion image 100
+    result == Ok 8410
+solveWithExpansion : Image, Nat -> Nat
+solveWithExpansion = \image, expansionFactor ->
     imageNums = imageToNat image
 
     [rowSum, colSum]
     |> List.map (\f -> f imageNums)
-    |> List.map calculateDistancesBetween
+    |> List.map \sums -> calculateDistancesBetween sums expansionFactor
     |> List.sum
 
-calculateDistancesBetween : List Nat -> Nat
-calculateDistancesBetween = \line ->
+calculateDistancesBetween : List Nat, Nat -> Nat
+calculateDistancesBetween = \line, expansionFactor ->
     lineEnumerate =
         line
         |> List.mapWithIndex (\x, i -> (x, i))
@@ -58,7 +58,11 @@ calculateDistancesBetween = \line ->
     distanceInner, (sum1, i1, j1) <- lineEnumerate |> List.walk 0
     distanceMid, (sum2, i2, j2) <- lineEnumerate |> List.walkFrom (j1 + 1) distanceInner
 
-    singlePairDistance = (i2 - i1) * 2 - (j2 - j1)
+    countSpace = i2 - i1
+    countNonBlankSpace = j2 - j1
+    countBlankSpace = countSpace - countNonBlankSpace
+    singlePairDistance = countBlankSpace * expansionFactor + countNonBlankSpace
+
     pairsCount = sum1 * sum2
     distanceMid + (singlePairDistance * pairsCount)
 
