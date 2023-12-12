@@ -54,17 +54,37 @@ calculateDistancesBetween = \line, expansionFactor ->
         |> List.mapWithIndex (\x, i -> (x, i))
         |> List.keepIf (\(x, i) -> x > 0)
         |> List.mapWithIndex (\(x, i), j -> (x, i, j))
+    lineAccumulate =
+        acc, x <-
+            lineEnumerate
+            |> List.map (\(x, i, j) -> x)
+            |> List.walk [0]
+        next =
+            acc
+            |> List.last
+            |> okOrCrash "starts with one member & grows"
+            |> Num.add x
+        List.append acc next
 
-    distanceInner, (sum1, i1, j1) <- lineEnumerate |> List.walk 0
-    distanceMid, (sum2, i2, j2) <- lineEnumerate |> List.walkFrom (j1 + 1) distanceInner
+    lineSum = lineAccumulate |> List.last |> okOrCrash "has at least one element"
 
-    countSpace = i2 - i1
-    countNonBlankSpace = j2 - j1
-    countBlankSpace = countSpace - countNonBlankSpace
-    singlePairDistance = countBlankSpace * expansionFactor + countNonBlankSpace
+    sums =
+        (x1, i1, j1), (x2, i2, j2), acc1 <-
+            List.map3
+                lineEnumerate
+                (List.dropFirst lineEnumerate 1)
+                (List.dropFirst lineAccumulate 1)
 
-    pairsCount = sum1 * sum2
-    distanceMid + (singlePairDistance * pairsCount)
+        countSpace = i2 - i1
+        countNonBlankSpace = j2 - j1
+        countBlankSpace = countSpace - countNonBlankSpace
+        singlePairDistance = countBlankSpace * expansionFactor + countNonBlankSpace
+
+        acc2 = lineSum - acc1
+
+        pairsCount = acc1 * acc2
+        (singlePairDistance * pairsCount)
+    sums |> List.sum
 
 expect
     value = [[1, 2, 3], [4, 5, 6]]
