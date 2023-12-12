@@ -93,9 +93,9 @@ getLeadingCompleteDamageStreak = \conditions ->
             (MidStreak len, Operational) -> (i, len) |> EndOfStreak |> Break
             _ -> crash "nahhhh bro"
     when finalState is
-        EndOfStreak (i, len) -> Steak (List.dropFirst conditions i) len
+        EndOfStreak (i, len) -> Streak (List.dropFirst conditions i) len
         EncounteredUnknown i -> StreakPending i
-        MidStreak len -> Streak [], len
+        MidStreak len -> Streak [] len
         BeforeStreak -> NoDamage
 
 callCached : Dict state result, state, (state -> result) -> (Dict state result, result)
