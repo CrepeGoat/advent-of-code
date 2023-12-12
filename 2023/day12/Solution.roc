@@ -45,15 +45,15 @@ countRecordArrangements = \springConditions, damageStreaks ->
         if List.isEmpty damageStreaks then 1 else 0
     else
         when getLeadingCompleteDamageStreak springConditions is
-            Ok (reducedConds, leadingStreak) ->
+            Streak reducedConds leadingStreak ->
                 if Ok leadingStreak == List.first damageStreaks then
                     reducedStreaks = List.dropFirst damageStreaks 1
                     countRecordArrangements reducedConds reducedStreaks
                 else
                     0
 
-            Err NoDamage -> if List.isEmpty damageStreaks then 1 else 0
-            Err (StreakPending unknownIndex) ->
+            NoDamage -> if List.isEmpty damageStreaks then 1 else 0
+            StreakPending unknownIndex ->
                 conditionsFilledOperational =
                     springConditions |> List.set unknownIndex Operational
                 conditionsFilledDamaged =
@@ -66,19 +66,19 @@ countRecordArrangements = \springConditions, damageStreaks ->
 expect
     conditions = [Unknown, Unknown, Unknown, Operational, Damaged, Damaged, Damaged]
     result = getLeadingCompleteDamageStreak conditions
-    exptResult = 0 |> StreakPending |> Err
+    exptResult = StreakPending 0
     result == exptResult
 expect
     conditions = [Operational, Damaged, Damaged, Damaged]
     result = getLeadingCompleteDamageStreak conditions
-    exptResult = Ok ([], 3)
+    exptResult = Streak [] 3
     result == exptResult
 expect
     conditions = [Operational, Operational]
     result = getLeadingCompleteDamageStreak conditions
-    exptResult = Err NoDamage
+    exptResult = NoDamage
     result == exptResult
-getLeadingCompleteDamageStreak : List Condition -> Result (List Condition, Nat) [StreakPending Nat, NoDamage]
+getLeadingCompleteDamageStreak : List Condition -> [Streak (List Condition) Nat, StreakPending Nat, NoDamage]
 getLeadingCompleteDamageStreak = \conditions ->
     finalState =
         state, (condition, i) <-
@@ -93,10 +93,10 @@ getLeadingCompleteDamageStreak = \conditions ->
             (MidStreak len, Operational) -> (i, len) |> EndOfStreak |> Break
             _ -> crash "nahhhh bro"
     when finalState is
-        EndOfStreak (i, len) -> Ok (List.dropFirst conditions i, len)
-        EncounteredUnknown i -> i |> StreakPending |> Err
-        MidStreak len -> Ok ([], len)
-        BeforeStreak -> Err NoDamage
+        EndOfStreak (i, len) -> Steak (List.dropFirst conditions i) len
+        EncounteredUnknown i -> StreakPending i
+        MidStreak len -> Streak [], len
+        BeforeStreak -> NoDamage
 
 callCached : Dict state result, state, (state -> result) -> (Dict state result, result)
 callCached = \cache, state, fn ->
