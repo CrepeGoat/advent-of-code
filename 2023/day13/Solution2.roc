@@ -28,19 +28,19 @@ expect
         testInput
         |> parse
         |> Result.map solve
-    exptResult = 405
+    exptResult = 400
     result == Ok exptResult
 
 solve : Patterns -> Nat
 solve = \patterns ->
     rowReflsSum =
         patterns
-        |> List.joinMap findVerticalRefls
+        |> List.joinMap findVerticalSmudgedRefls
         |> List.sum
     colReflsSum =
         patterns
         |> List.map transpose
-        |> List.joinMap findVerticalRefls
+        |> List.joinMap findVerticalSmudgedRefls
         |> List.sum
 
     rowReflsSum + (100 * colReflsSum)
@@ -52,8 +52,8 @@ expect
         |> okOrCrash "bad test"
         |> List.first
         |> okOrCrash "bad test"
-    result = pattern |> findVerticalRefls
-    exptResult = [5]
+    result = pattern |> findVerticalSmudgedRefls
+    exptResult = []
     result == exptResult
 expect
     pattern =
@@ -63,8 +63,8 @@ expect
         |> List.first
         |> okOrCrash "bad test"
         |> transpose
-    result = pattern |> findVerticalRefls
-    exptResult = []
+    result = pattern |> findVerticalSmudgedRefls
+    exptResult = [3]
     result == exptResult
 expect
     pattern =
@@ -73,7 +73,7 @@ expect
         |> okOrCrash "bad test"
         |> List.get 1
         |> okOrCrash "bad test"
-    result = pattern |> findVerticalRefls
+    result = pattern |> findVerticalSmudgedRefls
     exptResult = []
     result == exptResult
 expect
@@ -84,40 +84,61 @@ expect
         |> List.get 1
         |> okOrCrash "bad test"
         |> transpose
-    result = pattern |> findVerticalRefls
-    exptResult = [4]
+    result = pattern |> findVerticalSmudgedRefls
+    exptResult = [1]
     result == exptResult
-findVerticalRefls : Pattern -> List Nat
-findVerticalRefls = \pattern ->
+findVerticalSmudgedRefls : Pattern -> List Nat
+findVerticalSmudgedRefls = \pattern ->
     pattern
-    |> List.map findReflsInRow
-    |> List.map Set.fromList
-    |> walkFromFirst Set.intersection
+    |> List.map countReflMismatchesInRow
+    |> walkFromFirst (\acc, x -> List.map2 acc x Num.add)
     |> okOrCrash "TODO handle errors"
-    |> Set.toList
+    |> List.mapWithIndex (\x, i -> (x, i + 1))
+    |> List.keepIf (\(x, i) -> x == 1)
+    |> List.map (\(x, i) -> i)
 
-findReflsInRow : List Ground -> List Nat
-findReflsInRow = \patternRow ->
-    len = patternRow |> List.len
+expect
+    list = [1, 2, 3, 4, 3, 3, 1]
+    result = countReflMismatchesInRow list
+    List.len result + 1 == List.len list
+expect
+    list = [1, 2, 3, 4, 4, 3, 3, 1]
+    result = countReflMismatchesInRow list
+    exptResult = [1, 2, 3, 1, 3, 1, 1]
+    result == exptResult
+countReflMismatchesInRow : List a -> List Nat where a implements Eq
+countReflMismatchesInRow = \list ->
+    len = list |> List.len
     indexMid = len |> Num.divTrunc 2
-    patternRowReverse = patternRow |> List.reverse
+    listReverse = list |> List.reverse
 
     frontRefls =
         indexRefl <-
-            List.range { start: After 0, end: At indexMid } |> List.keepIf
-        sublist = patternRow |> List.takeFirst (2 * indexRefl)
-        sublistRev = patternRowReverse |> List.takeLast (2 * indexRefl)
-        sublist == sublistRev
+            List.range { start: After 0, end: At indexMid } |> List.map
+        sublist = list |> List.takeFirst (2 * indexRefl)
+        sublistRev = listReverse |> List.takeLast (2 * indexRefl)
+
+        countDiffs sublist sublistRev |> Num.divTrunc 2
 
     backRefls =
         indexReflReverse <-
-            List.range { start: After indexMid, end: Before len } |> List.keepIf
+            List.range { start: After indexMid, end: Before len } |> List.map
         indexRefl = len - indexReflReverse
-        sublist = patternRow |> List.takeLast (2 * indexRefl)
-        sublistRev = patternRowReverse |> List.takeFirst (2 * indexRefl)
-        sublist == sublistRev
+        sublist = list |> List.takeLast (2 * indexRefl)
+        sublistRev = listReverse |> List.takeFirst (2 * indexRefl)
+
+        countDiffs sublist sublistRev |> Num.divTrunc 2
 
     List.concat frontRefls backRefls
+
+expect
+    list1 = [1, 1, 1, 1, 1, 1, 1, 1]
+    list2 = [1, 1, 0, 1, 1, 1, 1, 0]
+    result = countDiffs list1 list2
+    exptResult = 2
+    result == exptResult
+countDiffs = \list1, list2 ->
+    List.map2 list1 list2 (\x1, x2 -> if x1 == x2 then 0 else 1) |> List.sum
 
 expect
     listlist = [[1, 2, 3], [4, 5, 6]]
