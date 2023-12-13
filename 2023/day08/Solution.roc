@@ -16,29 +16,26 @@ expect
     |> Result.try solve
     == Ok 6
 
-solve : Documents -> Result Nat [DidNotReachDestination, MissingNode Str]
+solve : Documents -> Result Nat [MissingNode Str]
 solve = \docs ->
     network = Dict.fromList docs.network
 
-    (stopNode, stepsCount) =
-        (prevNode, i), step <-
-            docs.turns
-            |> walkListCircleUntil ("AAA", 0)
+    (prevNode, i), step <-
+        docs.turns
+        |> walkListCircleUntil ("AAA", 0)
 
-        fork =
-            network
-            |> Dict.get prevNode
-            |> Result.mapErr \_ -> MissingNode prevNode
-        nextNodeOrErr =
-            when step is
-                LEFT -> fork |> Result.map .left
-                RIGHT -> fork |> Result.map .right
-        when nextNodeOrErr is
-            Ok "ZZZ" -> Break (Ok {}, i + 1)
-            Err e -> Break (Err e, i + 1)
-            Ok node -> Continue (node, i + 1)
-
-    Result.map stopNode \_ -> stepsCount
+    fork =
+        network
+        |> Dict.get prevNode
+        |> Result.mapErr \_ -> MissingNode prevNode
+    nextNodeOrErr =
+        when step is
+            LEFT -> fork |> Result.map .left
+            RIGHT -> fork |> Result.map .right
+    when nextNodeOrErr is
+        Ok "ZZZ" -> Break (Ok (i + 1))
+        Err e -> Break (Err e)
+        Ok node -> Continue (node, i + 1)
 
 walkListCircleUntil : List a, state, (state, a -> [Break b, Continue state]) -> b
 walkListCircleUntil = \list, initState, func ->
