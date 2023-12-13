@@ -14,7 +14,7 @@ app "day12"
         pf.Arg,
         ParseInput.{ parse },
         ReadInput.{ readFileAndThen },
-        Solution.{ solve },
+        Solution2.{ solve },
     ]
     provides [main] to pf
 
