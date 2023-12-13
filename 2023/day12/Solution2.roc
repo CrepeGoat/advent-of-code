@@ -19,93 +19,76 @@ expect
         testInput
         |> parse
         |> Result.map solve
-    result == Ok 21
-expect
-    testInput =
-        """
-        ???.### 1,1,3
-        
-        """
-    result =
-        testInput
-        |> parse
-        |> Result.map solve
-    result == Ok 1
+    result == Ok 525152
 solve : Records -> Nat
 solve = \records ->
     counts =
-        record <- records |> List.map
-        countRecordArrangements record.springConditions record.damageStreaks
+        record <- records |> unfoldRecords |> List.map
+        countRecordArrangements record
 
     counts |> List.sum
 
-countRecordArrangements : List Condition, List Nat -> Nat
-countRecordArrangements = \springConditions, damageStreaks ->
-    if List.isEmpty springConditions then
-        if List.isEmpty damageStreaks then 1 else 0
-    else
-        when getLeadingCompleteDamageStreak springConditions is
-            Streak reducedConds leadingStreak ->
-                if Ok leadingStreak == List.first damageStreaks then
-                    reducedStreaks = List.dropFirst damageStreaks 1
-                    countRecordArrangements reducedConds reducedStreaks
+unfoldRecords : Records -> Records
+unfoldRecords = \records ->
+    { conditions, damageStreakLens } <- records |> List.map
+
+    {
+        conditions: conditions
+        |> List.repeat 5
+        |> List.intersperse [Unknown]
+        |> List.join,
+        damageStreakLens: damageStreakLens |> List.repeat 5 |> List.join,
+    }
+
+countRecordArrangements : Record -> Nat
+countRecordArrangements = \{ conditions: conditionsOrig, damageStreakLens } ->
+    conditions = conditionsOrig |> List.append Operational
+    conditionsLen = List.len conditions
+    damageStreaksLen = List.len damageStreakLens
+
+    maybeOperational = List.map conditions \cond -> cond != Damaged
+    maybeDamaged = List.map conditions \cond -> cond != Operational
+
+    countsFinal =
+        countsFirst =
+            maybeOperational
+            |> accumulateList Bool.true Bool.and
+            |> List.dropLast 1
+            |> List.map (\b -> if b then 1 else 0)
+
+        prevCounts, damageStreakLen <- damageStreakLens |> List.walk countsFirst
+        countsMid, i <-
+            List.range { start: At 1, end: At conditionsLen }
+            |> List.walk (List.repeat 0 (conditionsLen + 1))
+
+        if maybeOperational |> List.get (i - 1) |> okOrCrash "valid index" |> Bool.not then
+            countsMid
+        else
+            count1 = countsMid |> List.get (i - 1) |> okOrCrash "valid index"
+            count2 =
+                if (i - 1 >= damageStreakLen) then
+                    if
+                        (
+                            List.sublist
+                                maybeDamaged
+                                { start: (i - 1) - damageStreakLen, len: damageStreakLen }
+                            |> List.all (\b -> b)
+                        )
+                    then
+                        prevCounts |> List.get ((i - 1) - damageStreakLen) |> okOrCrash "valid index"
+                    else
+                        0
                 else
                     0
+            countsMid |> List.set i (count1 + count2)
 
-            NoDamage -> if List.isEmpty damageStreaks then 1 else 0
-            StreakPending unknownIndex ->
-                conditionsFilledOperational =
-                    springConditions |> List.set unknownIndex Operational
-                conditionsFilledDamaged =
-                    springConditions |> List.set unknownIndex Damaged
+    countsFinal |> List.last |> okOrCrash "has at least one item"
 
-                [conditionsFilledOperational, conditionsFilledDamaged]
-                |> List.map (\conds -> countRecordArrangements conds damageStreaks)
-                |> List.sum
-
-expect
-    conditions = [Unknown, Unknown, Unknown, Operational, Damaged, Damaged, Damaged]
-    result = getLeadingCompleteDamageStreak conditions
-    exptResult = StreakPending 0
-    result == exptResult
-expect
-    conditions = [Operational, Damaged, Damaged, Damaged]
-    result = getLeadingCompleteDamageStreak conditions
-    exptResult = Streak [] 3
-    result == exptResult
-expect
-    conditions = [Operational, Operational]
-    result = getLeadingCompleteDamageStreak conditions
-    exptResult = NoDamage
-    result == exptResult
-getLeadingCompleteDamageStreak : List Condition -> [Streak (List Condition) Nat, StreakPending Nat, NoDamage]
-getLeadingCompleteDamageStreak = \conditions ->
-    finalState =
-        state, (condition, i) <-
-            conditions
-            |> List.mapWithIndex (\x, i -> (x, i))
-            |> List.walkUntil BeforeStreak
-        when (state, condition) is
-            (_, Unknown) -> i |> EncounteredUnknown |> Break
-            (BeforeStreak, Operational) -> Continue BeforeStreak
-            (BeforeStreak, Damaged) -> 1 |> MidStreak |> Continue
-            (MidStreak len, Damaged) -> len + 1 |> MidStreak |> Continue
-            (MidStreak len, Operational) -> (i, len) |> EndOfStreak |> Break
-            _ -> crash "nahhhh bro"
-    when finalState is
-        EndOfStreak (i, len) -> Streak (List.dropFirst conditions i) len
-        EncounteredUnknown i -> StreakPending i
-        MidStreak len -> Streak [] len
-        BeforeStreak -> NoDamage
-
-callCached : Dict state result, state, (state -> result) -> (Dict state result, result)
-callCached = \cache, state, fn ->
-    when Dict.get cache state is
-        Ok value -> (cache, value)
-        Err _ ->
-            result = fn state
-            newCache = Dict.insert cache state result
-            (newCache, result)
+accumulateList : List a, a, (a, a -> a) -> List a
+accumulateList = \list, default, merge ->
+    acc, x <- list |> List.walk [default]
+    next = acc |> List.last |> okOrCrash "starts with one value and grows" |> merge x
+    List.append acc next
 
 walkFromFirst : List a, (a, a -> a) -> Result a [ListWasEmpty]
 walkFromFirst = \list, fold ->

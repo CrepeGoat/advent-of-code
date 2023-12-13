@@ -39,12 +39,12 @@ testInput =
 expect
     testInput
     |> parse
-    |> Result.map (\rows -> rows |> List.map (\record -> (List.len record.springConditions, List.len record.damageStreaks)))
+    |> Result.map (\rows -> rows |> List.map (\record -> (List.len record.conditions, List.len record.damageStreakLens)))
     == Ok [(7, 3), (14, 3), (15, 4), (13, 3), (19, 3), (12, 3)]
 
 Input : Records
 Records : List Record
-Record : { springConditions : List Condition, damageStreaks : List Nat }
+Record : { conditions : List Condition, damageStreakLens : List Nat }
 Condition : [Operational, Damaged, Unknown]
 
 parse : Str -> Result Input _
@@ -58,13 +58,13 @@ parseInput =
     operational = const Operational |> skip (codeunit '.')
     damaged = const Damaged |> skip (codeunit '#')
     unknown = const Unknown |> skip (codeunit '?')
-    conditions = oneOf [operational, damaged, unknown] |> oneOrMore
+    conditionList = oneOf [operational, damaged, unknown] |> oneOrMore
 
     streaks = digits |> sepBy1 (codeunit ',')
 
     record =
-        const \springConditions -> \damageStreaks -> { springConditions, damageStreaks }
-        |> keep conditions
+        const \conditions -> \damageStreakLens -> { conditions, damageStreakLens }
+        |> keep conditionList
         |> skip space
         |> keep streaks
     records = record |> sepBy1 newline
