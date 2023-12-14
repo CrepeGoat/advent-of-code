@@ -4,41 +4,140 @@ interface Solution2
         ParseInput.{ parse, Platform, Space },
     ]
 
-testInput =
-    """
-    O....#....
-    O.OO#....#
-    .....##...
-    OO.#O....O
-    .O.....O#.
-    O.#..O.#.#
-    ..O..#O..O
-    .......O..
-    #....###..
-    #OO..#....
-
-    """
 expect
+    testInput =
+        """
+        O....#....
+        O.OO#....#
+        .....##...
+        OO.#O....O
+        .O.....O#.
+        O.#..O.#.#
+        ..O..#O..O
+        .......O..
+        #....###..
+        #OO..#....
+
+        """
     result =
         testInput
         |> parse
         |> Result.map solve
-    exptResult = 136
+    exptResult = 64
     result == Ok exptResult
+
+cycleReps = 1000000000
 
 solve : Platform -> Nat
 solve = \platform ->
-    platform
-    |> transpose
-    |> moveRoundRocksWest
-    |> transpose
-    |> List.reverse
-    |> calculateSouthLoad
+    (platformFinal, _) =
+        (platformMid, cache), cycleNum <-
+            List.range { start: At 1, end: Length cycleReps }
+            |> List.walkUntil (platform, Dict.empty {})
+
+        nextPlatform = runCycle platformMid
+
+        if Dict.contains cache nextPlatform then
+            prevCycleNum = Dict.get cache nextPlatform |> okOrCrash "valid key"
+            repeatLen = cycleNum - prevCycleNum
+            if (cycleReps - cycleNum) % repeatLen == 0 then
+                Break (nextPlatform, cache)
+            else
+                Continue (nextPlatform, Dict.insert cache nextPlatform cycleNum)
+        else
+            Continue (nextPlatform, Dict.insert cache nextPlatform cycleNum)
+
+    platformFinal |> List.reverse |> calculateSouthLoad
 
 calculateSouthLoad = \platform ->
     platform
     |> List.mapWithIndex (\row, i -> row |> List.countIf (\x -> x == Round) |> Num.mul (i + 1))
     |> List.sum
+
+expect
+    testInput =
+        """
+        O....#....
+        O.OO#....#
+        .....##...
+        OO.#O....O
+        .O.....O#.
+        O.#..O.#.#
+        ..O..#O..O
+        .......O..
+        #....###..
+        #OO..#....
+
+        """
+    exptOutput =
+        """
+        .....#....
+        ....#...O#
+        ...OO##...
+        .OO#......
+        .....OOO#.
+        .O#...O#.#
+        ....O#....
+        ......OOOO
+        #...O###..
+        #..OO#....
+
+        """
+    result =
+        testInput
+        |> parse
+        |> Result.map runCycle
+    exptResult = exptOutput |> parse
+    result == exptResult
+expect
+    testInput =
+        """
+        .....#....
+        ....#...O#
+        ...OO##...
+        .OO#......
+        .....OOO#.
+        .O#...O#.#
+        ....O#....
+        ......OOOO
+        #...O###..
+        #..OO#....
+
+        """
+    exptOutput =
+        """
+        .....#....
+        ....#...O#
+        .....##...
+        ..O#......
+        .....OOO#.
+        .O#...O#.#
+        ....O#...O
+        .......OOO
+        #..OO###..
+        #.OOO#...O
+
+        """
+    result =
+        testInput
+        |> parse
+        |> Result.map runCycle
+    exptResult = exptOutput |> parse
+    result == exptResult
+
+runCycle = \platform -> platform # v roll north
+    |> transpose
+    |> moveRoundRocksWest
+    |> transpose # v roll west
+    |> moveRoundRocksWest # v roll south
+    |> List.reverse
+    |> transpose
+    |> moveRoundRocksWest
+    |> transpose
+    |> List.reverse # v roll east
+    |> List.map List.reverse
+    |> moveRoundRocksWest
+    |> List.map List.reverse
 
 moveRoundRocksWest : Platform -> Platform
 moveRoundRocksWest = \platform ->
