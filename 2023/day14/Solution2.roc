@@ -30,22 +30,24 @@ cycleReps = 1000000000
 
 solve : Platform -> Nat
 solve = \platform ->
-    (platformFinal, _) =
+    platformFinal =
         (platformMid, cache), cycleNum <-
-            List.range { start: At 1, end: Length cycleReps }
-            |> List.walkUntil (platform, Dict.empty {})
+            loopWithIndex (platform, Dict.empty {}) 1
 
-        nextPlatform = runCycle platformMid
+        if cycleNum > cycleReps then
+            Break platformMid
+        else
+            nextPlatform = runCycle platformMid
 
-        if Dict.contains cache nextPlatform then
-            prevCycleNum = Dict.get cache nextPlatform |> okOrCrash "valid key"
-            repeatLen = cycleNum - prevCycleNum
-            if (cycleReps - cycleNum) % repeatLen == 0 then
-                Break (nextPlatform, cache)
+            if Dict.contains cache nextPlatform then
+                prevCycleNum = Dict.get cache nextPlatform |> okOrCrash "valid key"
+                repeatLen = cycleNum - prevCycleNum
+                if (cycleReps - cycleNum) % repeatLen == 0 then
+                    Break nextPlatform
+                else
+                    Continue (nextPlatform, Dict.insert cache nextPlatform cycleNum)
             else
                 Continue (nextPlatform, Dict.insert cache nextPlatform cycleNum)
-        else
-            Continue (nextPlatform, Dict.insert cache nextPlatform cycleNum)
 
     platformFinal |> List.reverse |> calculateSouthLoad
 
@@ -201,6 +203,12 @@ loop : state, (state -> [Break b, Continue state]) -> b
 loop = \stateInit, runIteration ->
     when runIteration stateInit is
         Continue state -> loop state runIteration
+        Break result -> result
+
+loopWithIndex : state, Nat, (state, Nat -> [Break b, Continue state]) -> b
+loopWithIndex = \stateInit, index, runIteration ->
+    when runIteration stateInit index is
+        Continue state -> loopWithIndex state (index + 1) runIteration
         Break result -> result
 
 okOrCrash : Result a *, Str -> a
