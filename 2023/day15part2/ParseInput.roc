@@ -1,5 +1,5 @@
 interface ParseInput
-    exposes [parse, Steps, Step]
+    exposes [parse, Steps, Operation, LabelledLens]
     imports [
         parse.Core.{
             Parser,
@@ -36,8 +36,9 @@ expect
     result == Ok 11
 
 Input : Steps
-Steps : List Step
-Step : List U8
+Steps : List Operation
+Operation : [Remove (List U8), Append LabelledLens]
+LabelledLens : { number : U8, label : List U8 }
 
 parse : Str -> Result Input _
 parse = \text -> parseStr parseInput (text |> Str.replaceEach "\n" "")
@@ -45,8 +46,18 @@ parse = \text -> parseStr parseInput (text |> Str.replaceEach "\n" "")
 parseInput : Parser _ Input
 parseInput =
     newline = codeunit '\n'
-    isStepChar = \unit -> unit != ','
-    step = codeunitSatisfies isStepChar |> oneOrMore
-    steps = step |> sepBy1 (codeunit ',')
+
+    isAlpha = \unit -> 'a' <= unit && unit <= 'z'
+    label = codeunitSatisfies isAlpha |> oneOrMore
+    lensNum = const Num.toU8 |> keep digit
+    remove = const Remove |> keep label |> skip (codeunit '-')
+    append =
+        const (\l -> \number -> Append { label: l, number })
+        |> keep label
+        |> skip (codeunit '=')
+        |> keep lensNum
+
+    op = oneOf [remove, append]
+    steps = op |> sepBy1 (codeunit ',')
 
     steps |> skip (newline |> many)
