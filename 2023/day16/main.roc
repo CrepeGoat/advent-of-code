@@ -27,5 +27,7 @@ main =
             Err (ParsingFailure msg) -> crash "failed to parse input: \(msg)"
             Err (ParsingIncomplete msg) -> crash "only parsed partial input: \(msg)"
 
-    result = solve parsedInput
-    Stdout.line "result: \(Num.toStr result)"
+    resultOrErr = solve parsedInput
+    when resultOrErr is
+        Ok result -> Stdout.line "result: \(Num.toStr result)"
+        Err _ -> Stderr.line "err"

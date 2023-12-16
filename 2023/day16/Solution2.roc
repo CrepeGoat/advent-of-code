@@ -22,17 +22,34 @@ expect
     result =
         testInput
         |> parse
-        |> Result.map solve
-    exptResult = 46
+        |> Result.try solve
+    exptResult = 51
     result == Ok exptResult
 
-solve : Contraption -> Nat
+solve : Contraption -> Result Nat _
 solve = \contraption ->
-    contraption |> calculateEnergized { pos: { x: 0, y: 0 }, dir: East } |> Set.len
+    contraption |> maxEnergized
 
 LightState : { dir : Cardinal, pos : Position }
 Position : { x : Nat, y : Nat }
 Cardinal : [North, South, East, West]
+
+maxEnergized : Contraption -> Result Nat _
+maxEnergized = \contraption ->
+    contRow <- contraption |> List.first |> Result.try
+    maxX = List.len contRow
+    maxY = List.len contraption
+
+    lightStarts = List.join [
+        List.range { start: At 0, end: Length maxX } |> List.map (\x -> { pos: { x, y: 0 }, dir: South }),
+        List.range { start: At 0, end: Length maxX } |> List.map (\x -> { pos: { x, y: maxY - 1 }, dir: North }),
+        List.range { start: At 0, end: Length maxY } |> List.map (\y -> { pos: { x: 0, y }, dir: East }),
+        List.range { start: At 0, end: Length maxY } |> List.map (\y -> { pos: { x: maxX - 1, y }, dir: West }),
+    ]
+
+    lightStarts
+    |> List.map (\light -> calculateEnergized contraption light |> Set.len)
+    |> walkFromFirst Num.max
 
 calculateEnergized : Contraption, LightState -> Set Position
 calculateEnergized = \contraption, firstLight ->
@@ -113,6 +130,12 @@ posToThe = \{ x: boundX, y: boundY }, { x, y }, dir ->
             if newX >= boundX then Err OutOfBounds else Ok { y, x: newX }
 
 # ##############################################################################
+walkFromFirst : List a, (a, a -> a) -> Result a [ListWasEmpty]
+walkFromFirst = \list, fold ->
+    when list is
+        [] -> Err ListWasEmpty
+        [item, ..] -> Ok (List.walkFrom list 1 item fold)
+
 loop : state, (state -> [Break b, Continue state]) -> b
 loop = \stateInit, runIteration ->
     when runIteration stateInit is
