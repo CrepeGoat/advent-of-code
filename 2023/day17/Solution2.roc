@@ -32,9 +32,24 @@ expect
         testInput
         |> parse
         |> Result.try solve
-    exptResult = 102
+    exptResult = 94
     result == Ok exptResult
+expect
+    testInput =
+        """
+        111111111111
+        999999999991
+        999999999991
+        999999999991
+        999999999991
 
+        """
+    result =
+        testInput
+        |> parse
+        |> Result.try solve
+    exptResult = 71
+    result == Ok exptResult
 solve : HeatLossMap -> Result U32 _
 solve = \map ->
     bounds = {
@@ -50,17 +65,19 @@ solve = \map ->
     cityStates =
         Dict.empty {}
         |> Dict.insert { pos: { x: 0, y: 0 }, dir: South, dirStreak: 0 } 0
+        |> Dict.insert { pos: { x: 0, y: 0 }, dir: East, dirStreak: 0 } 0
 
     queue : Heap TraversalState
-    queue = Heap.empty compareTraversalStates |> Heap.push { pos: { x: 0, y: 0 }, dir: South, dirStreak: 0, cost: 0 }
+    queue =
+        Heap.empty compareTraversalStates
+        |> Heap.push { pos: { x: 0, y: 0 }, dir: South, dirStreak: 0, cost: 0 }
+        |> Heap.push { pos: { x: 0, y: 0 }, dir: East, dirStreak: 0, cost: 0 }
 
     (cityStatesMid, queueMid) <- loop (cityStates, queue)
     when Heap.pop queueMid is
         Err e -> e |> Err |> Break
         Ok (queueRest, state) ->
-            if state.pos == targetPos then
-                state.cost |> Ok |> Break
-            else
+            if state.pos != targetPos then
                 addedStates =
                     nextPossDirs =
                         dir <-
@@ -98,6 +115,10 @@ solve = \map ->
                 nextQueue = addedStates |> List.walk queueRest Heap.push
 
                 Continue (nextCityStates, nextQueue)
+            else if state.dirStreak < 4 then
+                Continue (cityStatesMid, queueRest)
+            else
+                state.cost |> Ok |> Break
 
 compareTraversalStates =
     state <- makeCmpFunc
@@ -111,7 +132,12 @@ validNextDirs = \dir, streak ->
         when dir is
             North | South -> [East, West]
             East | West -> [North, South]
-    if streak < 3 then List.append sides dir else sides
+    if streak < 4 then
+        [dir]
+    else if streak < 10 then
+        List.append sides dir
+    else
+        sides
 
 posToThe : Position, Position, Cardinal -> Result Position [OutOfBounds]
 posToThe = \{ x: boundX, y: boundY }, { x, y }, dir ->
