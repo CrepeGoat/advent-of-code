@@ -66,8 +66,7 @@ solve = \map ->
                     nextPossDirs =
                         dir <-
                             state.dir
-                            |> validNextDirs
-                            |> List.dropIf (\dir -> state.dirStreak >= 3 && state.dir == dir)
+                            |> validNextDirs state.dirStreak
                             |> List.keepOks
                         posToThe bounds state.pos dir
                         |> Result.map (\pos -> (pos, dir))
@@ -110,13 +109,13 @@ compareTraversalStates =
     |> Num.toNat
     |> Num.subSaturated (state.pos.x + state.pos.y) # use pos in A* algorithm
 
-validNextDirs : Cardinal -> List Cardinal
-validNextDirs = \dir ->
-    when dir is
-        North -> [North, West, East]
-        South -> [South, West, East]
-        West -> [North, South, West]
-        East -> [North, South, East]
+validNextDirs : Cardinal, U8 -> List Cardinal
+validNextDirs = \dir, streak ->
+    sides =
+        when dir is
+            North | South -> [East, West]
+            East | West -> [North, South]
+    if streak < 3 then List.append sides dir else sides
 
 posToThe : Position, Position, Cardinal -> Result Position [OutOfBounds]
 posToThe = \{ x: boundX, y: boundY }, { x, y }, dir ->
