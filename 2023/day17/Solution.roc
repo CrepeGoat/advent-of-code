@@ -2,6 +2,7 @@ interface Solution
     exposes [solve]
     imports [
         ParseInput.{ parse, HeatLossMap },
+        Heap.{ Heap, insert, pop },
     ]
 
 TraversalState : { pos : Position, cost : U32, dir : Cardinal, dirStreak : U8 }
@@ -50,15 +51,13 @@ solve = \map ->
         Dict.empty {}
         |> Dict.insert { pos: { x: 0, y: 0 }, dir: South, dirStreak: 0 } 0
 
-    queue : List TraversalState
-    queue = [{ pos: { x: 0, y: 0 }, dir: South, dirStreak: 0, cost: 0 }]
+    queue : Heap TraversalState
+    queue = Heap.empty compareTraversalStates |> Heap.push { pos: { x: 0, y: 0 }, dir: South, dirStreak: 0, cost: 0 }
 
     (cityStatesMid, queueMid) <- loop (cityStates, queue)
-    when List.first queueMid is
+    when Heap.pop queueMid is
         Err e -> e |> Err |> Break
-        Ok state ->
-            queueRest = List.dropFirst queueMid 1
-
+        Ok (queueRest, state) ->
             if state.pos == targetPos then
                 state.cost |> Ok |> Break
             else
@@ -96,10 +95,7 @@ solve = \map ->
                     cityStatesMid2, addedState <- addedStates |> List.walk cityStatesMid
                     key = { pos: addedState.pos, dir: addedState.dir, dirStreak: addedState.dirStreak }
                     Dict.insert cityStatesMid2 key addedState.cost
-                nextQueue =
-                    queueRest
-                    |> List.concat addedStates
-                    |> List.sortWith compareTraversalStates
+                nextQueue = addedStates |> List.walk queueRest Heap.push
 
                 Continue (nextCityStates, nextQueue)
 
