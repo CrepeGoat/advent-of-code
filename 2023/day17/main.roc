@@ -12,7 +12,6 @@ main =
     Stdout.line "w/e"
 
 expect
-    # n = 29792
-    n = 86898
+    n = 86897
     list = List.range { start: At n, end: Before 0 }
     List.sortWith list Num.compare == List.range { start: At 1, end: At n }
