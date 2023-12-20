@@ -4,9 +4,11 @@ interface Solution
         ParseInput.{ parse, DigPlan, Instruction, Direction },
     ]
 
-BiDirections : { enter : Direction, exit : Direction }
+LabelledAreaSections : { positives : List AreaSection, negatives : List AreaSection }
+AreaSection : { margin : U32, inner : U32 }
+LineWithMetadata : { points : Line, instruction : Instruction I32 }
+Line : (Position, Position)
 Position : { x : I32, y : I32 }
-Bounds : { minx : I32, maxx : I32, miny : I32, maxy : I32 }
 
 expect
     testInput =
@@ -36,7 +38,52 @@ expect
 
 solve : DigPlan -> Result U32 _
 solve = \plan ->
+    plan
+    |> planToBorderLines
+    |> collectAreaSections
+    |> Result.try calculateArea
+
+calculateArea : LabelledAreaSections -> Result U32 _
+calculateArea = \{ positives, negatives } ->
+    Num.subChecked
+        (positives |> List.map .inner |> List.sum)
+        (negatives |> List.map (\area -> area.inner + area.margin) |> List.sum)
+
+collectAreaSections : List LineWithMetadata -> Result LabelledAreaSections _
+collectAreaSections = \lines ->
     crash "TODO"
+
+getAllPoints : List LineWithMetadata -> List Position
+getAllPoints = \lines -> lines |> List.map (\line -> line.points.0)
+
+planToBorderLines : DigPlan -> List LineWithMetadata
+planToBorderLines = \plan ->
+    (borderFinal, _) =
+        posFirst = { x: 0, y: 0 }
+        (borderMid, posMid), instructionPair <-
+            plan |> List.walk ([], posFirst)
+
+        instruction = getInstruction instructionPair
+        lineNext = makeLineWithMetadata posMid instruction
+        posNext = lineNext.1
+        borderNext = List.append borderMid lineNext
+        (borderNext, posNext)
+    borderFinal
+
+getInstruction : Instruction num -> { dir : Direction, distance : num }
+getInstruction = .given
+
+makeLineWithMetadata : Position, Instruction I32 -> LineWithMetadata
+makeLineWithMetadata = \pos, instruction ->
+    { points: (pos, getNearbyPos pos instruction), instruction }
+
+getNearbyPos : Position, Instruction I32 -> Position
+getNearbyPos = \{ x, y }, { dir, distance } ->
+    when dir is
+        Up -> { x, y: y + distance }
+        Down -> { x, y: y - distance }
+        Left -> { x: x - distance, y }
+        Right -> { x: x + distance, y }
 
 # ##############################################################################
 
