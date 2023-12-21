@@ -39,7 +39,7 @@ expect
 solve : DigPlan -> Result U32 _
 solve = \plan ->
     plan
-    |> planToBorderLines
+    |> List.map .given
     |> collectAreaSections
     |> Result.try calculateArea
 
@@ -49,33 +49,54 @@ calculateArea = \{ positives, negatives } ->
         (positives |> List.map .inner |> List.sum)
         (negatives |> List.map (\area -> area.inner + area.margin) |> List.sum)
 
-collectAreaSections : List LineWithMetadata -> Result LabelledAreaSections _
+collectAreaSections : List Instruction -> Result LabelledAreaSections _
 collectAreaSections = \lines ->
-    crash "TODO"
+    (areasMid, linesMid) <- loop ([], lines)
 
-getAllPoints : List LineWithMetadata -> List Position
-getAllPoints = \lines -> lines |> List.map (\line -> line.points.0)
+    _, (bend, i) <-
+        List.map4
+            linesMid
+            (linesMid |> List.dropFirst 1)
+            (linesMid |> List.dropFirst 2)
+            (linesMid |> List.dropFirst 3)
+            (\x -> x)
+        |> List.mapWithIndex (\x, i -> (x, i))
+        |> List.walkBackwardsUntil (Err IsMinimal)
+    when reduceBendArea [bend.0, bend.1, bend.2, bend.3] is
+        Ok value -> value |> Ok |> Break
+        Err e -> e |> Err |> Continue
 
-planToBorderLines : DigPlan -> List LineWithMetadata
-planToBorderLines = \plan ->
-    (borderFinal, _) =
-        posFirst = { x: 0, y: 0 }
-        (borderMid, posMid), instructionPair <-
-            plan |> List.walk ([], posFirst)
+reduceBendArea : List BorderLine -> Result (List BorderLine, AreaSection) [IsMinimal]
+reduceBendArea = \lines ->
+    # Try forwards reduction
+    _ <- simplifyBendAreaImpl lines |> okOrTry
 
-        instruction = getInstruction instructionPair
-        lineNext = makeLineWithMetadata posMid instruction
-        posNext = lineNext.1
-        borderNext = List.append borderMid lineNext
-        (borderNext, posNext)
-    borderFinal
+    # Try backwards reduction
+    (lineReversed, area) <- lines |> List.reverse |> simplifyBendAreaImpl |> Result.map
+    (lineReversed |> List.reverse, area)
 
-getInstruction : Instruction num -> { dir : Direction, distance : num }
-getInstruction = .given
+simplifyBendAreaImpl = \lines ->
+    when lines is
+        [x1, x2, x3, x4] ->
+            if
+                (x1.instruction.dir != x3.instruction.dir)
+                && (x2.instruction.dir == x4.instruction.dir)
+                && (x1.instruction.distance > x3.instruction.distance)
+            then
+                (
+                    [
+                        { x1 & distance: x1.distance - x3.distance },
+                        { x2 & distance: x2.dist + x4.dist },
+                    ] {
+                        mid: (x3.distance - 1) * (x2.dist - 1),
+                        margin: x2.dist - 1 + x3.dist * 2,
+                    }
+                )
+                |> Ok
+            else
+                Err IsMinimal
 
-makeLineWithMetadata : Position, Instruction I32 -> LineWithMetadata
-makeLineWithMetadata = \pos, instruction ->
-    { points: (pos, getNearbyPos pos instruction), instruction }
+        _ -> crash "should pass precisely 4 items to this function"
 
 getNearbyPos : Position, Instruction I32 -> Position
 getNearbyPos = \{ x, y }, { dir, distance } ->
