@@ -29,7 +29,7 @@ interface ParseInput
     ]
 
 Input : DigPlan
-DigPlan : List { given : Instruction U8, encoded : Instruction U32 }
+DigPlan : List { given : Instruction, encoded : Instruction }
 Instruction : { dir : Direction, distance : U32 }
 Direction : [Up, Down, Left, Right]
 
