@@ -6,9 +6,6 @@ interface Solution
 
 LabelledAreaSections : { positives : List AreaSection, negatives : List AreaSection }
 AreaSection : { margin : U32, inner : U32 }
-LineWithMetadata : { points : Line, instruction : Instruction I32 }
-Line : (Position, Position)
-Position : { x : I32, y : I32 }
 
 expect
     testInput =
@@ -48,63 +45,136 @@ calculateArea = \{ positives, negatives } ->
     Num.subChecked
         (positives |> List.map .inner |> List.sum)
         (negatives |> List.map (\area -> area.inner + area.margin) |> List.sum)
+    |> Result.mapErr (\_ -> InvalidAreaSections)
 
 collectAreaSections : List Instruction -> Result LabelledAreaSections _
 collectAreaSections = \lines ->
-    (areasMid, linesMid) <- loop ([], lines)
+    (linesMid, areasMid, rollCount) <- loop (lines, { lefts: [], rights: [] }, 0)
+    if List.len linesMid < 4 then
+        InvalidInstructionLoop |> Err |> Break
+    else if List.len linesMid == 4 then
+        (sqArea, sqSide) = getSquareArea linesMid
+        sqAreaSection = { inner: sqArea, margin: 0 }
 
-    _, (bend, i) <-
-        List.map4
-            linesMid
-            (linesMid |> List.dropFirst 1)
-            (linesMid |> List.dropFirst 2)
-            (linesMid |> List.dropFirst 3)
-            (\x -> x)
-        |> List.mapWithIndex (\x, i -> (x, i))
-        |> List.walkBackwardsUntil (Err IsMinimal)
-    when reduceBendArea [bend.0, bend.1, bend.2, bend.3] is
-        Ok value -> value |> Ok |> Break
-        Err e -> e |> Err |> Continue
+        result =
+            when (areasMid, sqSide) is
+                ({ lefts, rights }, Left) ->
+                    { positives: lefts |> List.append sqAreaSection, negatives: rights }
 
-reduceBendArea : List BorderLine -> Result (List BorderLine, AreaSection) [IsMinimal]
-reduceBendArea = \lines ->
+                ({ lefts, rights }, Right) ->
+                    { positives: rights |> List.append sqAreaSection, negatives: lefts }
+        result |> Ok |> Break
+    else if rollCount >= List.len linesMid then
+        CouldNotReduce |> Err |> Break
+    else
+        reducedBend =
+            (bend, i) <-
+                List.map4
+                    linesMid
+                    (linesMid |> List.dropFirst 1)
+                    (linesMid |> List.dropFirst 2)
+                    (linesMid |> List.dropFirst 3)
+                    (\x1, x2, x3, x4 -> (x1, x2, x3, x4))
+                |> List.mapWithIndex (\x, i -> (x, i))
+                |> List.mapTry
+
+            reduction <- verifyMinimalBend [bend.0, bend.1, bend.2, bend.3] |> Result.mapErr
+            (reduction, i)
+
+        when reducedBend is
+            Ok _ ->
+                linesRolled = List.concat
+                    (List.dropFirst linesMid 1)
+                    (List.takeFirst linesMid 1)
+                (linesRolled, areasMid, rollCount + 1) |> Continue
+
+            Err ((reducedLine, area, side), i) ->
+                linesNext = List.join [
+                    List.takeFirst linesMid i,
+                    reducedLine,
+                    List.dropFirst linesMid (i + 4),
+                ]
+                areasNext =
+                    when (areasMid, side) is
+                        ({ lefts, rights }, Left) ->
+                            { lefts: lefts |> List.append area, rights }
+
+                        ({ lefts, rights }, Right) ->
+                            { lefts, rights: rights |> List.append area }
+                Continue (linesNext, areasNext, 0)
+
+getSquareArea : List Instruction -> (U32, [Left, Right])
+getSquareArea = \lines ->
+    when lines is
+        [l1, l2, l3, l4] ->
+            area =
+                (l1.distance - 1 |> Num.toU32)
+                * (l2.distance - 1 |> Num.toU32)
+            side = getSide l1.dir l2.dir
+
+            (area, side)
+
+        _ -> crash "not a square"
+
+verifyMinimalBend : List Instruction -> Result {} (List Instruction, AreaSection, [Left, Right])
+verifyMinimalBend = \bend ->
     # Try forwards reduction
-    _ <- simplifyBendAreaImpl lines |> okOrTry
+    _ <- verifyMinimalBendInner bend |> Result.try
 
     # Try backwards reduction
-    (lineReversed, area) <- lines |> List.reverse |> simplifyBendAreaImpl |> Result.map
-    (lineReversed |> List.reverse, area)
+    (bendReversed, area, side) <-
+        bend |> List.reverse |> verifyMinimalBendInner |> Result.mapErr
+    (bendReversed |> List.reverse, area, side)
 
-simplifyBendAreaImpl = \lines ->
-    when lines is
-        [x1, x2, x3, x4] ->
-            if
-                (x1.instruction.dir != x3.instruction.dir)
-                && (x2.instruction.dir == x4.instruction.dir)
-                && (x1.instruction.distance > x3.instruction.distance)
-            then
-                (
-                    [
-                        { x1 & distance: x1.distance - x3.distance },
-                        { x2 & distance: x2.dist + x4.dist },
-                    ] {
-                        mid: (x3.distance - 1) * (x2.dist - 1),
-                        margin: x2.dist - 1 + x3.dist * 2,
-                    }
-                )
-                |> Ok
-            else
-                Err IsMinimal
+verifyMinimalBendInner = \bend ->
+    when bend is
+        [x1, x2, x3, x4] if
+        (x1.dir == turnDirectionBack x3.dir)
+        && (x2.dir == x4.dir)
+        && (x1.distance > x3.distance) ->
+            (
+                [
+                    { x1 & distance: x1.distance - x3.distance },
+                    { x2 & distance: x2.distance + x4.distance },
+                ],
+                {
+                    inner: (x3.distance - 1) * (x2.distance - 1) |> Num.toU32,
+                    margin: (x2.distance - 1) + x3.distance * 2 |> Num.toU32,
+                },
+                getSide x1.dir x2.dir,
+            )
+            |> Err
 
+        [_, _, _, _] -> Ok {}
         _ -> crash "should pass precisely 4 items to this function"
 
-getNearbyPos : Position, Instruction I32 -> Position
-getNearbyPos = \{ x, y }, { dir, distance } ->
+getSide : Direction, Direction -> [Left, Right]
+getSide = \dir1, dir2 ->
+    if dir2 == turnDirectionLeft dir1 then
+        Left
+    else if dir2 == turnDirectionRight dir1 then
+        Right
+    else
+        crash "invalid instruction sequence"
+
+turnDirectionLeft : Direction -> Direction
+turnDirectionLeft = \dir ->
     when dir is
-        Up -> { x, y: y + distance }
-        Down -> { x, y: y - distance }
-        Left -> { x: x - distance, y }
-        Right -> { x: x + distance, y }
+        Up -> Left
+        Left -> Down
+        Down -> Right
+        Right -> Up
+
+turnDirectionBack : Direction -> Direction
+turnDirectionBack = \dir ->
+    when dir is
+        Up -> Down
+        Left -> Right
+        Down -> Up
+        Right -> Left
+
+turnDirectionRight = \dir ->
+    dir |> turnDirectionLeft |> turnDirectionLeft |> turnDirectionLeft
 
 # ##############################################################################
 

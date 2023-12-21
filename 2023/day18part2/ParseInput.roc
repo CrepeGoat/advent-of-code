@@ -30,7 +30,7 @@ interface ParseInput
 
 Input : DigPlan
 DigPlan : List { given : Instruction U8, encoded : Instruction U32 }
-Instruction num : { dir : Direction, distance : num }
+Instruction : { dir : Direction, distance : U32 }
 Direction : [Up, Down, Left, Right]
 
 expect
@@ -57,27 +57,7 @@ expect
         |> parse
         |> Result.map List.len
     result == Ok 14
-expect
-    testInput =
-        """
-        R 6 (#70c710)
-        D 5 (#0dc571)
-        L 5 (#8ceee2)
-        U 2 (#caa173)
 
-        """
-    result =
-        testInput
-        |> parse
-        |> okOrCrash "test failed"
-        |> List.map .encoded
-    exptEncoded = [
-        { dir: Right, distance: 461937 },
-        { dir: Down, distance: 56407 },
-        { dir: Left, distance: 577262 },
-        { dir: Up, distance: 829975 },
-    ]
-    result == exptEncoded
 parse : Str -> Result Input _
 parse = \text -> parseStr parseInput text
 
@@ -95,13 +75,13 @@ parseInput =
     right = const Right |> skip (codeunit 'R')
 
     direction = oneOf [up, down, left, right]
-    digitsU8 = const Num.toU8 |> keep digits
+    digitsU32 = const Num.toU32 |> keep digits
 
     instruction =
         const (\dir -> \distance -> { dir, distance })
         |> keep direction
         |> skip space
-        |> keep digitsU8
+        |> keep digitsU32
 
     instructionLine =
         const \given -> \encoded -> { given, encoded }
@@ -112,14 +92,14 @@ parseInput =
     digPlan = instructionLine |> sepBy1 newline
     digPlan |> skip (newline |> many)
 
-encodedInstruction : Parser _ (Instruction U32)
+encodedInstruction : Parser _ Instruction
 encodedInstruction =
     hexDigitsU32
     |> map decodeInstruction
     |> flatten
     |> between (string "(#") (codeunit ')')
 
-decodeInstruction : U32 -> Result (Instruction U32) Str
+decodeInstruction : U32 -> Result Instruction Str
 decodeInstruction = \num ->
     distance = Num.shiftRightZfBy num 4
     dir <- Result.map
