@@ -13,6 +13,7 @@ interface ParseInput
             sepBy1,
             map,
             between,
+            flatten,
         },
         parse.String.{
             anyCodeunit,
@@ -28,8 +29,8 @@ interface ParseInput
     ]
 
 Input : DigPlan
-DigPlan : List Instruction
-Instruction : { dir : Direction, distance : U8, hexColor : Str }
+DigPlan : List { given : Instruction, encoded : Instruction }
+Instruction : { dir : Direction, distance : U32 }
 Direction : [Up, Down, Left, Right]
 
 expect
@@ -56,7 +57,29 @@ expect
         |> parse
         |> Result.map List.len
     result == Ok 14
+expect
+    testInput =
+        """
+        R 6 (#70c710)
+        D 5 (#0dc571)
+        L 5 (#8ceee2)
+        U 2 (#caa173)
 
+        """
+    result : List Instruction
+    result =
+        testInput
+        |> parse
+        |> okOrCrash "test failed"
+        |> List.map .encoded
+    exptEncoded : List Instruction
+    exptEncoded = [
+        { dir: Right, distance: 461937 },
+        { dir: Down, distance: 56407 },
+        { dir: Left, distance: 577262 },
+        { dir: Up, distance: 829975 },
+    ]
+    result == exptEncoded
 parse : Str -> Result Input _
 parse = \text -> parseStr parseInput text
 
@@ -74,20 +97,65 @@ parseInput =
     right = const Right |> skip (codeunit 'R')
 
     direction = oneOf [up, down, left, right]
-    digitsU8 = const Num.toU8 |> keep digits
-    color =
-        codeunitSatisfies isHexNum
-        |> oneOrMore
-        |> between (string "(#") (codeunit ')')
-        |> map strFromUtf8
+    digitsU32 = const Num.toU32 |> keep digits
 
     instruction =
-        const (\dir -> \distance -> \hexColor -> { dir, distance, hexColor })
+        const (\dir -> \distance -> { dir, distance })
         |> keep direction
         |> skip space
-        |> keep digitsU8
-        |> skip space
-        |> keep color
+        |> keep digitsU32
 
-    digPlan = instruction |> sepBy1 newline
+    instructionLine =
+        const \given -> \encoded -> { given, encoded }
+        |> keep instruction
+        |> skip space
+        |> keep encodedInstruction
+
+    digPlan = instructionLine |> sepBy1 newline
     digPlan |> skip (newline |> many)
+
+encodedInstruction : Parser _ Instruction
+encodedInstruction =
+    hexDigitsU32
+    |> map decodeInstruction
+    |> flatten
+    |> between (string "(#") (codeunit ')')
+
+decodeInstruction : U32 -> Result Instruction Str
+decodeInstruction = \num ->
+    distance = Num.shiftRightZfBy num 4
+    dir <- Result.map
+            (
+                when Num.bitwiseXor num (Num.shiftLeftBy distance 4) is
+                    0 -> Ok Right
+                    1 -> Ok Down
+                    2 -> Ok Left
+                    3 -> Ok Up
+                    _ -> Err "invalid direction label"
+            )
+    { dir, distance }
+
+# ##############################################################################
+
+hexDigitsU32 =
+    const (\ds -> ds |> List.walk 0 (\result, d -> 16 * result + (Num.toU32 d)))
+    |> keep (hexDigit |> oneOrMore)
+
+hexDigit : Parser _ U8
+hexDigit =
+    hexDigitMid =
+        unit <- const
+        if '0' <= unit && unit <= '9' then
+            unit - '0' |> Ok
+        else if 'a' <= unit && unit <= 'f' then
+            (unit - 'a' + 10) |> Ok
+        else
+            "invalid hexadecimal code unit" |> Err
+
+    hexDigitMid |> keep anyCodeunit |> flatten
+
+okOrCrash : Result a *, Str -> a
+okOrCrash = \result, crashMsg ->
+    when result is
+        Ok value -> value
+        _ -> crash crashMsg

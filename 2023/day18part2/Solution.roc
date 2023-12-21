@@ -4,10 +4,11 @@ interface Solution
         ParseInput.{ parse, DigPlan, Instruction, Direction },
     ]
 
-BiDirections : { enter : Direction, exit : Direction }
-Position : { x : I32, y : I32 }
-Bounds : { minx : I32, maxx : I32, miny : I32, maxy : I32 }
+LabelledAreaSections : { positives : List AreaSection, negatives : List AreaSection }
+AreaSection : { positive : AreaNum, negative : AreaNum }
+AreaNum : U64
 
+## The given test
 expect
     testInput =
         """
@@ -31,204 +32,203 @@ expect
         testInput
         |> parse
         |> Result.try solve
-    exptResult = 62
+    exptResult = 952408144115
     result == Ok exptResult
 
-solve : DigPlan -> Result U32 _
+## Four-sided cardinal cross
+expect
+    testInput =
+        """
+        R 2 (#000020)
+        D 2 (#000021)
+        R 2 (#000020)
+        U 2 (#000023)
+        R 2 (#000020)
+        U 2 (#000023)
+        L 2 (#000022)
+        U 2 (#000023)
+        L 2 (#000022)
+        D 2 (#000021)
+        L 2 (#000022)
+        D 2 (#000021)
+
+        """
+    result =
+        testInput
+        |> parse
+        |> Result.try solve
+    exptResult = 33
+    result == Ok exptResult
+
+solve : DigPlan -> Result AreaNum _
 solve = \plan ->
-    border = plan |> makeBorderList
-    biDirs <- plan |> makeDirs |> makeBiDirs |> Result.try
-    borderFilled <- fillBorder border biDirs |> Result.map
-
-    (Set.len borderFilled) |> Num.toU32
-
-expect
-    border = [
-        { x: 0, y: 1 },
-        { x: -1, y: 1 },
-        { x: -2, y: 1 },
-        { x: -3, y: 1 },
-        { x: -3, y: 0 },
-        { x: -3, y: -1 },
-        { x: -3, y: -2 },
-        { x: -2, y: -2 },
-        { x: -1, y: -2 },
-        { x: -1, y: -1 },
-        { x: 0, y: -1 },
-        { x: 0, y: 0 },
-    ]
-    biDirs = [
-        { enter: Up, exit: Left },
-        { enter: Left, exit: Left },
-        { enter: Left, exit: Left },
-        { enter: Left, exit: Down },
-        { enter: Down, exit: Down },
-        { enter: Down, exit: Down },
-        { enter: Down, exit: Right },
-        { enter: Right, exit: Right },
-        { enter: Right, exit: Up },
-        { enter: Up, exit: Right },
-        { enter: Right, exit: Up },
-    ]
-    result = fillBorder border biDirs |> okOrCrash "test err"
-    result |> Set.len == (List.len border + 3)
-
-fillBorder : List Position, List BiDirections -> Result (Set Position) _
-fillBorder = \border, biDirs ->
-    borderSet = Set.fromList border
-    bounds <- getBounds border |> Result.try
-
-    adjBorderDirections : List { left : List Direction, right : List Direction }
-    adjBorderDirections = border |> List.map2 biDirs getAdjBorderPoss
-
-    leftFilledBorder =
-        adjBorderPositions =
-            pos, dirs <- List.map2 border (adjBorderDirections |> List.map .left)
-            dirs |> List.map (\dir -> getAdjPos pos dir)
-        borderSetMid, adjPos <-
-            adjBorderPositions
-            |> List.joinMap (\x -> x)
-            |> List.walkTry borderSet
-        fillToBounds borderSetMid bounds adjPos
-        |> Result.map (\fill -> Set.union fill borderSetMid)
-
-    _ <- leftFilledBorder |> okOrTry
-    rightFilledBorder =
-        adjBorderPositions =
-            pos, dirs <- List.map2 border (adjBorderDirections |> List.map .right)
-            dirs |> List.map (\dir -> getAdjPos pos dir)
-        borderSetMid, adjPos <-
-            adjBorderPositions
-            |> List.joinMap (\x -> x)
-            |> List.walkTry borderSet
-        fillToBounds borderSetMid bounds adjPos
-        |> Result.map (\fill -> Set.union fill borderSetMid)
-
-    rightFilledBorder |> Result.mapErr (\_ -> InvalidBorder)
-
-getAdjBorderPoss : Position, BiDirections -> { left : List Direction, right : List Direction }
-getAdjBorderPoss = \pos, { enter, exit } ->
-    if exit == enter |> turnDirectionLeft then
-        { left: [], right: [enter, exit |> reverseDirection] }
-    else if exit == enter |> turnDirectionRight then
-        { left: [enter, exit |> reverseDirection], right: [] }
-    else if enter == exit then
-        { left: [enter |> turnDirectionLeft], right: [enter |> turnDirectionRight] }
+    if plan |> List.map .given |> startMeetsEnd then
+        plan
+        |> List.map .encoded
+        |> collectAreaSections
+        |> Result.try calculateArea
     else
-        crash "TODO handle error: direction cannot turn around"
+        Err InvalidInstructions
 
-## An interior node should expand to a finite set of points.
-expect
-    borderSet = Set.fromList [
-        { x: 0, y: 1 },
-        { x: -1, y: 1 },
-        { x: -2, y: 1 },
-        { x: -3, y: 1 },
-        { x: -3, y: 0 },
-        { x: -3, y: -1 },
-        { x: -3, y: -2 },
-        { x: -2, y: -2 },
-        { x: -1, y: -2 },
-        { x: -1, y: -1 },
-        { x: 0, y: -1 },
-        { x: 0, y: 0 },
-    ]
-    bounds = { minx: -3, maxx: 0, miny: -2, maxy: 1 }
-    pos = { x: -1, y: 0 }
-    result = fillToBounds borderSet bounds pos
-    exptResult =
-        Set.fromList [
-            { x: -1, y: 0 },
-            { x: -2, y: 0 },
-            { x: -2, y: -1 },
-        ]
-        |> Ok
-    result == exptResult
-## An exterior node should expand to the boundary and then error.
-expect
-    borderSet = Set.fromList [
-        { x: 0, y: 1 },
-        { x: -1, y: 1 },
-        { x: -2, y: 1 },
-        { x: -3, y: 1 },
-        { x: -3, y: 0 },
-        { x: -3, y: -1 },
-        { x: -3, y: -2 },
-        { x: -2, y: -2 },
-        { x: -1, y: -2 },
-        { x: -1, y: -1 },
-        { x: 0, y: -1 },
-        { x: 0, y: 0 },
-    ]
-    bounds = { minx: -3, maxx: 0, miny: -2, maxy: 1 }
-    pos = { x: 0, y: -2 }
-    result = fillToBounds borderSet bounds pos
-    exptResult = Err OutOfBounds
-    result == exptResult
-## A border node should not expand.
-expect
-    borderSet = Set.fromList [
-        { x: 0, y: 1 },
-        { x: -1, y: 1 },
-        { x: -2, y: 1 },
-        { x: -3, y: 1 },
-        { x: -3, y: 0 },
-        { x: -3, y: -1 },
-        { x: -3, y: -2 },
-        { x: -2, y: -2 },
-        { x: -1, y: -2 },
-        { x: -1, y: -1 },
-        { x: 0, y: -1 },
-        { x: 0, y: 0 },
-    ]
-    bounds = { minx: -3, maxx: 0, miny: -2, maxy: 1 }
-    pos = { x: 0, y: 0 }
-    result = fillToBounds borderSet bounds pos
-    exptResult = Set.empty {} |> Ok
-    result == exptResult
-fillToBounds : Set Position, Bounds, Position -> Result (Set Position) [OutOfBounds]
-fillToBounds = \borderSet, bounds, posStart ->
-    (resultMid, queueMid) <- loop (Set.empty {}, [posStart])
-    when queueMid is
-        [] -> resultMid |> Ok |> Break
-        [.., posN] ->
-            queueRest = List.dropLast queueMid 1
-            if isInBounds posN bounds |> Bool.not then
-                Break (Err OutOfBounds)
-            else if Set.contains resultMid posN || Set.contains borderSet posN then
-                Continue (resultMid, queueRest)
-            else
-                resultNext = resultMid |> Set.insert posN
-                queueNext = getAdjPoss posN |> List.walk queueRest List.append
-                Continue (resultNext, queueNext)
+calculateArea : LabelledAreaSections -> Result AreaNum _
+calculateArea = \{ positives, negatives } ->
+    Num.subChecked
+        (positives |> List.map .positive |> List.sum)
+        (negatives |> List.map .negative |> List.sum)
+    |> Result.mapErr (\_ -> InvalidAreaSections)
 
-expect
-    plan = [
-        { dir: Up, distance: 1, hexColor: "" },
-        { dir: Left, distance: 2, hexColor: "" },
-        { dir: Down, distance: 2, hexColor: "" },
-        { dir: Right, distance: 2, hexColor: "" },
-        { dir: Up, distance: 1, hexColor: "" },
-    ]
-    result = plan |> makeDirs |> makeBiDirs
-    exptResult = [
-        { enter: Up, exit: Left },
-        { enter: Left, exit: Left },
-        { enter: Left, exit: Down },
-        { enter: Down, exit: Down },
-        { enter: Down, exit: Right },
-        { enter: Right, exit: Right },
-        { enter: Right, exit: Up },
-        { enter: Up, exit: Up },
-    ]
-    result == Ok exptResult
-makeBiDirs : List Direction -> Result (List BiDirections) _
-makeBiDirs = \dirs ->
-    firstDir <- dirs |> List.first |> Result.map
-    dirs
-    |> List.dropFirst 1
-    |> List.append firstDir
-    |> List.map2 dirs (\exit, enter -> { exit, enter })
+collectAreaSections : List Instruction -> Result LabelledAreaSections _
+collectAreaSections = \lines ->
+    (linesMid, areasMid, rollCount) <- loop (lines, { lefts: [], rights: [] }, 0)
+
+    if List.len linesMid < 4 then
+        InvalidInstructionLoop |> Err |> Break
+    else if List.len linesMid == 4 then
+        (sqArea, sqSide) = getSquareArea linesMid
+
+        result =
+            when (areasMid, sqSide) is
+                ({ lefts, rights }, Left) ->
+                    { positives: lefts |> List.append sqArea, negatives: rights }
+
+                ({ lefts, rights }, Right) ->
+                    { positives: rights |> List.append sqArea, negatives: lefts }
+        result |> Ok |> Break
+    else if rollCount >= List.len linesMid then
+        CouldNotReduce |> Err |> Break
+    else
+        reducedBend =
+            (bend, i) <-
+                List.range { start: linesMid |> List.len |> Num.sub 5 |> After, end: At 0 }
+                |> List.map (\i -> (List.sublist linesMid { start: i, len: 5 }, i))
+                |> List.mapTry
+
+            reduction <-
+                verifyMinimalBend bend
+                |> Result.mapErr
+            (reduction, i)
+
+        when reducedBend is
+            Ok _ ->
+                linesRolled = List.concat
+                    (List.dropFirst linesMid 1)
+                    (List.takeFirst linesMid 1)
+                (linesRolled, areasMid, rollCount + 1) |> Continue
+
+            Err ((reducedLine, area, side), i) ->
+                linesNext = List.join [
+                    List.takeFirst linesMid i,
+                    reducedLine,
+                    List.dropFirst linesMid (i + 5),
+                ]
+                areasNext =
+                    when (areasMid, side) is
+                        ({ lefts, rights }, Left) ->
+                            { lefts: lefts |> List.append area, rights }
+
+                        ({ lefts, rights }, Right) ->
+                            { lefts, rights: rights |> List.append area }
+                Continue (linesNext, areasNext, 0)
+
+getSquareArea : List Instruction -> (AreaSection, [Left, Right])
+getSquareArea = \lines ->
+    when lines is
+        [l1, l2, l3, l4] ->
+            area =
+                (l1.distance + 1 |> Num.toU64)
+                * (l2.distance + 1 |> Num.toU64)
+            side = getSide l1.dir l2.dir
+
+            ({ positive: area, negative: 0 }, side)
+
+        _ -> crash "not a square"
+
+verifyMinimalBend : List Instruction -> Result {} (List Instruction, AreaSection, [Left, Right])
+verifyMinimalBend = \bend ->
+    # Try button reduction
+    _ <- bend |> verifyButtonBend |> Result.try
+
+    # Try forwards P-reduction
+    _ <- bend |> verifyPBend |> Result.try
+
+    # Try backwards P-reduction
+    bend |> verifyPBendReverse
+
+verifyButtonBend : List Instruction -> Result {} (List Instruction, AreaSection, [Left, Right])
+verifyButtonBend = \bend ->
+    when bend is
+        [x0, x1, x2, x3, x4] if
+        (x0.dir == x2.dir)
+        && (x0.dir == x4.dir)
+        && (x1.dir == turnDirectionBack x3.dir)
+        && (x1.distance == x3.distance) ->
+            (
+                [
+                    { x0 & distance: x0.distance + x2.distance + x4.distance },
+                ],
+                {
+                    positive: [x3.distance, x2.distance + 1]
+                    |> List.map Num.toU64
+                    |> List.product,
+                    negative: [x3.distance, x2.distance - 1]
+                    |> List.map Num.toU64
+                    |> List.product,
+                },
+                getSide x1.dir x2.dir,
+            )
+            |> Err
+
+        [_, _, _, _, _] -> Ok {}
+        _ -> crash "should pass precisely 5 items to this function"
+
+verifyPBend : List Instruction -> Result {} (List Instruction, AreaSection, [Left, Right])
+verifyPBend = \bend ->
+    when bend is
+        [x1, x2, x3, x4, xLeftover] if
+        (x1.dir == turnDirectionBack x3.dir)
+        && (x2.dir == x4.dir)
+        && (x1.distance > x3.distance) ->
+            (
+                [
+                    { x1 & distance: x1.distance - x3.distance },
+                    { x2 & distance: x2.distance + x4.distance },
+                    xLeftover,
+                ],
+                {
+                    positive: [x3.distance, x2.distance + 1]
+                    |> List.map Num.toU64
+                    |> List.product,
+                    negative: [x3.distance, x2.distance - 1]
+                    |> List.map Num.toU64
+                    |> List.product,
+                },
+                getSide x1.dir x2.dir,
+            )
+            |> Err
+
+        [_, _, _, _, _] -> Ok {}
+        _ -> crash "should pass precisely 5 items to this function"
+
+verifyPBendReverse : List Instruction -> Result {} (List Instruction, AreaSection, [Left, Right])
+verifyPBendReverse = \bend ->
+    (bendReversed, area, side) <-
+        bend |> List.reverse |> verifyPBend |> Result.mapErr
+
+    newBend = bendReversed |> List.reverse
+    newSide =
+        when side is
+            Left -> Right
+            Right -> Left
+    (newBend, area, newSide)
+
+getSide : Direction, Direction -> [Left, Right]
+getSide = \dir1, dir2 ->
+    if dir2 == turnDirectionLeft dir1 then
+        Left
+    else if dir2 == turnDirectionRight dir1 then
+        Right
+    else
+        crash "invalid instruction sequence"
 
 turnDirectionLeft : Direction -> Direction
 turnDirectionLeft = \dir ->
@@ -238,92 +238,23 @@ turnDirectionLeft = \dir ->
         Down -> Right
         Right -> Up
 
-turnDirectionRight = \dir ->
-    dir |> turnDirectionLeft |> turnDirectionLeft |> turnDirectionLeft
-
-reverseDirection : Direction -> Direction
-reverseDirection = \dir ->
+turnDirectionBack : Direction -> Direction
+turnDirectionBack = \dir ->
     when dir is
         Up -> Down
         Down -> Up
         Left -> Right
         Right -> Left
 
-makeDirs : DigPlan -> List Direction
-makeDirs = \plan ->
-    { dir, distance, hexColor: _ } <- plan |> List.joinMap
-    List.repeat dir (Num.toNat distance)
+turnDirectionRight = \dir ->
+    dir |> turnDirectionLeft |> turnDirectionLeft |> turnDirectionLeft
 
-isInBounds : Position, Bounds -> Bool
-isInBounds = \{ x, y }, { minx, miny, maxx, maxy } ->
-    minx <= x && x <= maxx && miny <= y && y <= maxy
-
-getBounds : List Position -> Result Bounds _
-getBounds = \poss ->
-    minx <- poss |> List.map .x |> walkFromFirst Num.min |> Result.map
-    miny = poss |> List.map .y |> walkFromFirst Num.min |> okOrCrash "confirmed non-empty"
-    maxx = poss |> List.map .x |> walkFromFirst Num.max |> okOrCrash "confirmed non-empty"
-    maxy = poss |> List.map .y |> walkFromFirst Num.max |> okOrCrash "confirmed non-empty"
-
-    { minx, miny, maxx, maxy }
-
-expect
-    input = [
-        { dir: Up, distance: 1, hexColor: "" },
-        { dir: Left, distance: 2, hexColor: "" },
-        { dir: Down, distance: 2, hexColor: "" },
-        { dir: Right, distance: 2, hexColor: "" },
-        { dir: Up, distance: 1, hexColor: "" },
-    ]
-    result = makeBorderList input
-    exptResult = [
-        { x: 0, y: 1 },
-        { x: -1, y: 1 },
-        { x: -2, y: 1 },
-        { x: -2, y: 0 },
-        { x: -2, y: -1 },
-        { x: -1, y: -1 },
-        { x: 0, y: -1 },
-        { x: 0, y: 0 },
-    ]
-    result == exptResult
-makeBorderList : DigPlan -> List Position
-makeBorderList = \plan ->
-    (borderFinal, _) =
-        posFirst = { x: 0, y: 0 }
-        (borderMid, posMid), { dir, distance, hexColor: _ } <-
-            plan |> List.walk ([], posFirst)
-
-        borderNext =
-            makeLine posMid dir (Num.toNat distance)
-            |> List.walk borderMid List.append
-        posNext = borderNext |> List.last |> Result.withDefault posMid
-        (borderNext, posNext)
-    borderFinal
-
-makeLine : Position, Direction, Nat -> List Position
-makeLine = \{ x, y }, dir, distance ->
-    List.range { start: At 1, end: Length distance }
-    |> List.map
-        (
-            when dir is
-                Up -> \n -> { x, y: y + n }
-                Down -> \n -> { x, y: y - n }
-                Left -> \n -> { x: x - n, y }
-                Right -> \n -> { x: x + n, y }
-        )
-
-getAdjPoss : Position -> List Position
-getAdjPoss = \pos ->
-    [Up, Down, Left, Right] |> List.map (\dir -> getAdjPos pos dir)
-
-getAdjPos : Position, Direction -> Position
-getAdjPos = \{ x, y }, dir ->
-    when dir is
-        Up -> { x, y: y + 1 }
-        Down -> { x, y: y - 1 }
-        Left -> { x: x - 1, y }
-        Right -> { x: x + 1, y }
+startMeetsEnd : List Instruction -> Bool
+startMeetsEnd = \instructions ->
+    (instructions |> List.keepIf (\instr -> instr.dir == Left) |> List.map .distance |> List.sum)
+    == (instructions |> List.keepIf (\instr -> instr.dir == Right) |> List.map .distance |> List.sum)
+    && (instructions |> List.keepIf (\instr -> instr.dir == Up) |> List.map .distance |> List.sum)
+    == (instructions |> List.keepIf (\instr -> instr.dir == Down) |> List.map .distance |> List.sum)
 
 # ##############################################################################
 
