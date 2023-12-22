@@ -4,6 +4,9 @@ interface Solution2
         ParseInput.{ parse, WorkflowsAndParts, Workflow, Part, Rule, WorkflowDestination },
     ]
 
+PartRange : { x : NumRange, m : NumRange, a : NumRange, s : NumRange }
+NumRange : { start : U16, end : U16 }
+
 expect
     testInput =
         """
@@ -30,40 +33,70 @@ expect
         testInput
         |> parse
         |> Result.map solve
-    exptResult = 19114
+    exptResult = 167409079868000
     result == Ok exptResult
 
-solve : WorkflowsAndParts -> U32
-solve = \{ workflows, parts } ->
+solve : WorkflowsAndParts -> U64
+solve = \{ workflows, parts: _ } ->
     workflowIndex =
         index, wf <- workflows |> List.walk (Dict.empty {})
         Dict.insert index wf.name wf
 
     acceptedParts =
-        part <- parts |> List.keepIf
-        wfDest <- loop (WorkflowName "in")
+        (queue, acceptedMid) <- loop ([("in", fullPartRange {})], [])
 
-        when wfDest is
-            Accept -> Break Bool.true
-            Reject -> Break Bool.false
-            WorkflowName name ->
-                workflow =
-                    Dict.get workflowIndex name
-                    |> okOrCrash "TODO handle errors"
+        when queue is
+            [] -> Break acceptedMid
+            [(dest, partRange), ..] ->
+                queueRest = queue |> List.dropFirst 1
 
-                workflow.rules
-                |> List.walk
-                    (Err DoesNotApplyToPart)
-                    (\x, rule -> okOrTry x (\_ -> runWorkflowRule rule part))
-                |> Result.withDefault workflow.finalDest
-                |> Continue
+                workflow = Dict.get workflowIndex dest |> okOrCrash "TODO handle errors"
+                { processing, accepted } = runWorkflow workflow partRange
+
+                Continue (
+                    queueRest |> List.concat processing,
+                    acceptedMid |> List.concat accepted,
+                )
 
     acceptedParts
-    |> List.joinMap (\part -> [part.x, part.m, part.a, part.s])
-    |> List.map Num.toU32
+    |> List.map countPartsInRange
     |> List.sum
 
-runWorkflowRule : Rule, Part -> Result WorkflowDestination [DoesNotApplyToPart]
+runWorkflow : Workflow, PartRange -> { processing : List (Str, PartRange), accepted : List PartRange }
+runWorkflow = \{ name: _, rules, finalDest }, partRange ->
+    (partsProcessingDefault, partsAssignedFinal) =
+        (partsProcessing, partsAssigned), rule <- rules |> List.walkUntil (Some partRange, [])
+
+        when partsProcessing is
+            None -> Break (partsProcessing, partsAssigned)
+            Some part ->
+                { mapTo, doesNotMap } = runWorkflowRule rule part
+
+                partsAssignedNext =
+                    when mapTo is
+                        Some a -> partsAssigned |> List.append a
+                        None -> partsAssigned
+
+                Continue (doesNotMap, partsAssignedNext)
+
+    allParts =
+        when partsProcessingDefault is
+            None -> partsAssignedFinal
+            Some p -> partsAssignedFinal |> List.append (finalDest, p)
+
+    partsToProcess =
+        (dest, part) <- allParts |> List.keepOks
+        when dest is
+            WorkflowName name -> Ok (name, part)
+            _ -> Err "ignore accepteds and rejecteds"
+    partsAccepted =
+        (dest, part) <- allParts |> List.keepOks
+        when dest is
+            Accept -> Ok part
+            _ -> Err "ignore processings and rejecteds"
+    { processing: partsToProcess, accepted: partsAccepted }
+
+runWorkflowRule : Rule, PartRange -> { mapTo : Option (WorkflowDestination, PartRange), doesNotMap : Option PartRange }
 runWorkflowRule = \{ category, cmp, value, dest }, part ->
     getCat =
         when category is
@@ -71,13 +104,60 @@ runWorkflowRule = \{ category, cmp, value, dest }, part ->
             M -> .m
             A -> .a
             S -> .s
-    catValue = part |> getCat
+    catRange = part |> getCat
 
-    when (Num.compare catValue value, cmp) is
-        (LT, LT) | (GT, GT) -> Ok dest
-        _ -> Err DoesNotApplyToPart
+    when (cmp, Num.compare catRange.start value, Num.compare catRange.end value) is
+        (GT, GT, _) | (LT, _, LT) -> { mapTo: Some (dest, part), doesNotMap: None }
+        (GT, _, GT) ->
+            (mappedCatRange, unmappedCatRange) = (
+                { catRange & start: value + 1 },
+                { catRange & end: value },
+            )
+            (mappedPart, unmappedPart) =
+                when category is
+                    X -> ({ part & x: mappedCatRange }, { part & x: unmappedCatRange })
+                    M -> ({ part & m: mappedCatRange }, { part & m: unmappedCatRange })
+                    A -> ({ part & a: mappedCatRange }, { part & a: unmappedCatRange })
+                    S -> ({ part & s: mappedCatRange }, { part & s: unmappedCatRange })
+
+            { mapTo: Some (dest, mappedPart), doesNotMap: Some unmappedPart }
+
+        (LT, LT, _) ->
+            (mappedCatRange, unmappedCatRange) = (
+                { catRange & end: value - 1 },
+                { catRange & start: value },
+            )
+            (mappedPart, unmappedPart) =
+                when category is
+                    X -> ({ part & x: mappedCatRange }, { part & x: unmappedCatRange })
+                    M -> ({ part & m: mappedCatRange }, { part & m: unmappedCatRange })
+                    A -> ({ part & a: mappedCatRange }, { part & a: unmappedCatRange })
+                    S -> ({ part & s: mappedCatRange }, { part & s: unmappedCatRange })
+
+            { mapTo: Some (dest, mappedPart), doesNotMap: Some unmappedPart }
+
+        (GT, _, _) | (LT, _, _) -> { mapTo: None, doesNotMap: Some part }
+
+countPartsInRange : PartRange -> U64
+countPartsInRange = \{ x, m, a, s } ->
+    [x, m, a, s] |> List.map countNumsInRange |> List.product
+
+countNumsInRange : NumRange -> U64
+countNumsInRange = \{ start, end } ->
+    end - start + 1 |> Num.toU64
+
+fullPartRange : {} -> PartRange
+fullPartRange = \_ ->
+    x = fullNumRange {}
+    { x, m: x, a: x, s: x }
+
+fullNumRange : {} -> NumRange
+fullNumRange = \_ ->
+    { start: 1, end: 4000 }
 
 # ##############################################################################
+
+Option a : [Some a, None]
 
 walkFromFirst : List a, (a, a -> a) -> Result a [ListWasEmpty]
 walkFromFirst = \list, fold ->
