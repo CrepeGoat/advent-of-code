@@ -114,7 +114,7 @@ runModule = \state, module, from, inputPulse ->
     outputPulses =
         when nextPulse is
             None -> []
-            Send outputPulse ->
+            Sends outputPulse ->
                 module.connectsTo
                 |> List.map (\to -> { from: module.name, to, pulse: outputPulse })
 
