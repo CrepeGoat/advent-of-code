@@ -5,7 +5,7 @@ interface Solution
     ]
 
 PulseCounts : { lows : Nat, highs : Nat }
-ModulesIndex : Dict Str Module
+ModuleIndex : Dict Str Module
 ModuleStates : Dict Str ModuleState
 ModuleState : [FF FlipFlopState, C ConjunctionState, BC BroadcasterState]
 PulseQueue : List PulseQueueItem
@@ -81,15 +81,16 @@ runCircuit = \statesInit, circuit ->
         [{ from, to, pulse }, ..] ->
             queueRest = queueMid |> List.dropFirst 1
             prevState = statesMid |> Dict.get to |> okOrCrash "TODO handle error"
+            toModule = Dict.get circuit to |> okOrCrash "TODO handle error"
 
             nextPulseCounts =
                 when pulse is
                     Low -> { pulseCountsMid & lows: pulseCountsMid.lows + 1 }
                     High -> { pulseCountsMid & highs: pulseCountsMid.highs + 1 }
 
-            (nextState, nextPulses) = runModule prevState module from pulse
+            (nextState, nextPulses) = runModule prevState toModule from pulse
 
-            nextStates = statesMid |> Dict.set to
+            nextStates = statesMid |> Dict.insert to nextState
             nextQueue = nextPulses |> List.walk queueMid List.append
 
             Continue (nextStates, nextPulseCounts, nextQueue)
@@ -123,8 +124,8 @@ runFlipFlop : FlipFlopState, Pulse -> (FlipFlopState, OutputPulse)
 runFlipFlop = \state, input ->
     when (state, input) is
         (_, High) -> (state, None)
-        (On, Low) -> (Off, Sends Low)
-        (Off, Low) -> (On, Sends High)
+        (@FlipFlopState On, Low) -> (@FlipFlopState Off, Sends Low)
+        (@FlipFlopState Off, Low) -> (@FlipFlopState On, Sends High)
 
 runConjunction : ConjunctionState, Pulse, Str -> (ConjunctionState, OutputPulse)
 runConjunction = \@ConjunctionState prevPulses, input, index ->
@@ -151,12 +152,6 @@ initCircuit = \modules ->
 
 # ##############################################################################
 
-walkFromFirst : List a, (a, a -> a) -> Result a [ListWasEmpty]
-walkFromFirst = \list, fold ->
-    when list is
-        [] -> Err ListWasEmpty
-        [item, ..] -> Ok (List.walkFrom list 1 item fold)
-
 loop : state, (state -> [Break b, Continue state]) -> b
 loop = \stateInit, runIteration ->
     when runIteration stateInit is
@@ -169,14 +164,3 @@ okOrCrash = \result, crashMsg ->
         Ok value -> value
         _ -> crash crashMsg
 
-okOr : Result a err, (err -> a) -> a
-okOr = \result, xformErr ->
-    when result is
-        Ok a -> a
-        Err e -> xformErr e
-
-okOrTry : Result a err, (err -> Result a err) -> Result a err
-okOrTry = \result, xformErr ->
-    when result is
-        Ok a -> Ok a
-        Err e -> xformErr e
