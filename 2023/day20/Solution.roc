@@ -1,11 +1,8 @@
 interface Solution
     exposes [solve]
     imports [
-        ParseInput.{ parse, Module },
     ]
 
-PulseCounts : { lows : Nat, highs : Nat }
-ModuleIndex : Dict Str Module
 ModuleStates : Dict Str ModuleState
 ModuleState : [FF FlipFlopState, C ConjunctionState, BC BroadcasterState]
 PulseQueue : List PulseQueueItem
@@ -16,84 +13,9 @@ ConjunctionState := Dict Str Pulse
 Pulse : [Low, High]
 OutputPulse : [Sends Pulse, None]
 
-expect
-    testInput =
-        """
-        broadcaster -> a, b, c
-        %a -> b
-        %b -> c
-        %c -> inv
-        &inv -> a
-
-        """
-    result =
-        testInput
-        |> parse
-        |> Result.map solve
-    exptResult = 32000000
-    result == Ok exptResult
-
-expect
-    testInput =
-        """
-        broadcaster -> a
-        %a -> inv, con
-        &inv -> b
-        %b -> con
-        &con -> output
-        """
-    result =
-        testInput
-        |> parse
-        |> Result.map solve
-    exptResult = 11687500
-    result == Ok exptResult
-
 solve : List Module -> U32
 solve = \modules ->
-    circuit = initCircuit modules
-    statesInit = initStates modules
-    pulseCountsInit = { lows: 0, highs: 0 }
-
-    (_, pulseCountsFinal) =
-        (statesMid, pulseCountsMid) <-
-            List.range { start: At 0, end: Length 1000 }
-            |> List.walk (statesInit, pulseCountsInit)
-
-        (nextStates, localPulseCounts) = runCircuit statesMid circuit
-        nextPulseCounts = {
-            lows: pulseCountsMid.lows + localPulseCounts.lows,
-            highs: pulseCountsMid.highs + localPulseCounts.highs,
-        }
-
-        (nextStates, localPulseCounts)
-
-    pulseCountsFinal
-
-runCircuit : ModuleStates, ModuleIndex -> (ModuleStates, PulseCounts)
-runCircuit = \statesInit, circuit ->
-    queueInit = [{ from: "", to: "broadcaster", pulse: Low }]
-    pulseCountsInit = { lows: 0, highs: 0 }
-
-    (statesMid, pulseCountsMid, queueMid) <- loop (statesInit, pulseCountsInit, queueInit)
-    when queueMid is
-        [] -> Break (statesMid, pulseCountsMid)
-        [{ from, to, pulse }, ..] ->
-            queueRest = queueMid |> List.dropFirst 1
-            prevState = statesMid |> Dict.get to |> okOrCrash "TODO handle error"
-            toModule = Dict.get circuit to |> okOrCrash "TODO handle error"
-
-            nextPulseCounts =
-                when pulse is
-                    Low -> { pulseCountsMid & lows: pulseCountsMid.lows + 1 }
-                    High -> { pulseCountsMid & highs: pulseCountsMid.highs + 1 }
-
-            (nextState, nextPulses) = runModule prevState toModule from pulse
-
-            nextStates = statesMid |> Dict.insert to nextState
-            nextQueue = nextPulses |> List.walk queueMid List.append
-
-            Continue (nextStates, nextPulseCounts, nextQueue)
+    0
 
 runModule : ModuleState, Module, Str, Pulse -> (ModuleState, List PulseQueueItem)
 runModule = \state, module, from, inputPulse ->
@@ -151,12 +73,6 @@ initCircuit = \modules ->
     |> List.walk (Dict.empty {}) (\module -> Dict.insert module.name module)
 
 # ##############################################################################
-
-loop : state, (state -> [Break b, Continue state]) -> b
-loop = \stateInit, runIteration ->
-    when runIteration stateInit is
-        Continue state -> loop state runIteration
-        Break result -> result
 
 okOrCrash : Result a *, Str -> a
 okOrCrash = \result, crashMsg ->

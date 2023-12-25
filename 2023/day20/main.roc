@@ -29,7 +29,4 @@ main =
 
     result = solve parsedInput
     Stdout.line "result: \(Num.toStr result)"
-# resultOrErr = solve parsedInput
-# when resultOrErr is
-#    Ok result -> Stdout.line "result: \(Num.toStr result)"
-#    Err _ -> Stderr.line "err"
+
