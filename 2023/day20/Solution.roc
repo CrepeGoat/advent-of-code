@@ -4,6 +4,18 @@ interface Solution
         ParseInput.{ parse, Module },
     ]
 
+PulseCounts : { lows : Nat, highs : Nat }
+ModulesIndex : Dict Str Module
+ModuleStates : Dict Str ModuleState
+ModuleState : [FF FlipFlopState, C ConjunctionState, BC BroadcasterState]
+PulseQueue : List PulseQueueItem
+PulseQueueItem : { from : Str, to : Str, pulse : Pulse }
+BroadcasterState := {}
+FlipFlopState := [On, Off]
+ConjunctionState := Dict Str Pulse
+Pulse : [Low, High]
+OutputPulse : [Sends Pulse, None]
+
 expect
     testInput =
         """
@@ -39,7 +51,103 @@ expect
 
 solve : List Module -> U32
 solve = \modules ->
-    crash "TODO"
+    circuit = initCircuit modules
+    statesInit = initStates modules
+    pulseCountsInit = { lows: 0, highs: 0 }
+
+    (_, pulseCountsFinal) =
+        (statesMid, pulseCountsMid) <-
+            List.range { start: At 0, end: Length 1000 }
+            |> List.walk (statesInit, pulseCountsInit)
+
+        (nextStates, localPulseCounts) = runCircuit statesMid circuit
+        nextPulseCounts = {
+            lows: pulseCountsMid.lows + localPulseCounts.lows,
+            highs: pulseCountsMid.highs + localPulseCounts.highs,
+        }
+
+        (nextStates, localPulseCounts)
+
+    pulseCountsFinal
+
+runCircuit : ModuleStates, ModuleIndex -> (ModuleStates, PulseCounts)
+runCircuit = \statesInit, circuit ->
+    queueInit = [{ from: "", to: "broadcaster", pulse: Low }]
+    pulseCountsInit = { lows: 0, highs: 0 }
+
+    (statesMid, pulseCountsMid, queueMid) <- loop (statesInit, pulseCountsInit, queueInit)
+    when queueMid is
+        [] -> Break (statesMid, pulseCountsMid)
+        [{ from, to, pulse }, ..] ->
+            queueRest = queueMid |> List.dropFirst 1
+            prevState = statesMid |> Dict.get to |> okOrCrash "TODO handle error"
+
+            nextPulseCounts =
+                when pulse is
+                    Low -> { pulseCountsMid & lows: pulseCountsMid.lows + 1 }
+                    High -> { pulseCountsMid & highs: pulseCountsMid.highs + 1 }
+
+            (nextState, nextPulses) = runModule prevState module from pulse
+
+            nextStates = statesMid |> Dict.set to
+            nextQueue = nextPulses |> List.walk queueMid List.append
+
+            Continue (nextStates, nextPulseCounts, nextQueue)
+
+runModule : ModuleState, Module, Str, Pulse -> (ModuleState, List PulseQueueItem)
+runModule = \state, module, from, inputPulse ->
+    (nextState, nextPulse) =
+        when (state, module) is
+            (FF ffState, { type: FlipFlop, name: _, connectsTo: _ }) ->
+                (nextFfState, nextFfPulse) = runFlipFlop ffState inputPulse
+                (FF nextFfState, nextFfPulse)
+
+            (C cState, { type: Conjunction, name, connectsTo: _ }) ->
+                (nextCState, nextCPulse) = runConjunction cState inputPulse name
+                (C nextCState, nextCPulse)
+
+            (BC bcState, { type: Broadcaster, name: _, connectsTo: _ }) ->
+                (nextBCState, nextBCPulse) = runBroadcaster bcState inputPulse
+                (BC nextBCState, nextBCPulse)
+
+    outputPulses =
+        when nextPulse is
+            None -> []
+            Send outputPulse ->
+                module.connectsTo
+                |> List.map (\to -> { from: module.name, to, pulse: outputPulse })
+
+    (nextState, outputPulses)
+
+runFlipFlop : FlipFlopState, Pulse -> (FlipFlopState, OutputPulse)
+runFlipFlop = \state, input ->
+    when (state, input) is
+        (_, High) -> (state, None)
+        (On, Low) -> (Off, Sends Low)
+        (Off, Low) -> (On, Sends High)
+
+runConjunction : ConjunctionState, Pulse, Str -> (ConjunctionState, OutputPulse)
+runConjunction = \@ConjunctionState prevPulses, input, index ->
+    pulses = prevPulses |> List.set index input
+    output = Sends (if pulses |> List.all (\p -> p == High) then Low else High)
+    (@ConjunctionState pulses, output)
+
+runBroadcaster : {}, Pulse -> ({}, OutputPulse)
+runBroadcaster = \state, pulse -> (state, Sends pulse)
+
+initStates : List Module -> ModuleStates
+initStates = \modules ->
+    statesList =
+        { type, name, connectsTo } <- modules |> List.map
+        when type is
+            FlipFlop -> Off |> @FlipFlopState |> FF
+            Conjunction -> List.repeat Low (List.len connectsTo) |> @ConjunctionState |> C
+            Broadcaster -> {} |> @BroadcasterState |> BC
+    statesList |> Dict.fromList
+
+initCircuit = \modules ->
+    modules
+    |> List.walk (Dict.empty {}) (\module -> Dict.insert module.name module)
 
 # ##############################################################################
 

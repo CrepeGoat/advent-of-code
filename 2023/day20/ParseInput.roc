@@ -29,7 +29,11 @@ interface ParseInput
     ]
 
 Input : List Module
-Module : { type : [FlipFlop, Conjunction, Broadcaster], name : Str, connectsTo : List Str }
+Module : {
+    type : [FlipFlop, Conjunction, Broadcaster],
+    name : Str,
+    connectsTo : List Str,
+}
 
 expect
     testInput =
