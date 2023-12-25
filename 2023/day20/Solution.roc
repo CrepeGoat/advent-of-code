@@ -5,7 +5,7 @@ interface Solution
     ]
 
 PulseCounts : { lows : Nat, highs : Nat }
-ModulesIndex : Dict Str Module
+ModuleIndex : Dict Str Module
 ModuleStates : Dict Str ModuleState
 ModuleState : [FF FlipFlopState, C ConjunctionState, BC BroadcasterState]
 PulseQueue : List PulseQueueItem
@@ -81,15 +81,16 @@ runCircuit = \statesInit, circuit ->
         [{ from, to, pulse }, ..] ->
             queueRest = queueMid |> List.dropFirst 1
             prevState = statesMid |> Dict.get to |> okOrCrash "TODO handle error"
+            toModule = Dict.get circuit to |> okOrCrash "TODO handle error"
 
             nextPulseCounts =
                 when pulse is
                     Low -> { pulseCountsMid & lows: pulseCountsMid.lows + 1 }
                     High -> { pulseCountsMid & highs: pulseCountsMid.highs + 1 }
 
-            (nextState, nextPulses) = runModule prevState module from pulse
+            (nextState, nextPulses) = runModule prevState toModule from pulse
 
-            nextStates = statesMid |> Dict.set to
+            nextStates = statesMid |> Dict.insert to nextState
             nextQueue = nextPulses |> List.walk queueMid List.append
 
             Continue (nextStates, nextPulseCounts, nextQueue)
@@ -120,17 +121,17 @@ runModule = \state, module, from, inputPulse ->
     (nextState, outputPulses)
 
 runFlipFlop : FlipFlopState, Pulse -> (FlipFlopState, OutputPulse)
-runFlipFlop = \state, input ->
+runFlipFlop = \@FlipFlopState state, input ->
     when (state, input) is
-        (_, High) -> (state, None)
-        (On, Low) -> (Off, Sends Low)
-        (Off, Low) -> (On, Sends High)
+        (_, High) -> (@FlipFlopState state, None)
+        (On, Low) -> (@FlipFlopState Off, Sends Low)
+        (Off, Low) -> (@FlipFlopState On, Sends High)
 
 runConjunction : ConjunctionState, Pulse, Str -> (ConjunctionState, OutputPulse)
 runConjunction = \@ConjunctionState prevPulses, input, index ->
-    pulses = prevPulses |> List.set index input
-    output = Sends (if pulses |> List.all (\p -> p == High) then Low else High)
-    (@ConjunctionState pulses, output)
+    pulses = prevPulses |> Dict.insert index input
+    output = if pulses |> Dict.values |> List.all (\p -> p == High) then Low else High
+    (@ConjunctionState pulses, Sends output)
 
 runBroadcaster : {}, Pulse -> ({}, OutputPulse)
 runBroadcaster = \state, pulse -> (state, Sends pulse)
@@ -139,23 +140,24 @@ initStates : List Module -> ModuleStates
 initStates = \modules ->
     statesList =
         { type, name, connectsTo } <- modules |> List.map
-        when type is
-            FlipFlop -> Off |> @FlipFlopState |> FF
-            Conjunction -> List.repeat Low (List.len connectsTo) |> @ConjunctionState |> C
-            Broadcaster -> {} |> @BroadcasterState |> BC
+        state =
+            when type is
+                Broadcaster -> {} |> @BroadcasterState |> BC
+                FlipFlop -> Off |> @FlipFlopState |> FF
+                Conjunction ->
+                    connectsTo
+                    |> List.map (\to -> (to, Low))
+                    |> Dict.fromList
+                    |> @ConjunctionState
+                    |> C
+        (name, state)
     statesList |> Dict.fromList
 
 initCircuit = \modules ->
     modules
-    |> List.walk (Dict.empty {}) (\module -> Dict.insert module.name module)
+    |> List.walk (Dict.empty {}) (\circuit, module -> Dict.insert circuit module.name module)
 
 # ##############################################################################
-
-walkFromFirst : List a, (a, a -> a) -> Result a [ListWasEmpty]
-walkFromFirst = \list, fold ->
-    when list is
-        [] -> Err ListWasEmpty
-        [item, ..] -> Ok (List.walkFrom list 1 item fold)
 
 loop : state, (state -> [Break b, Continue state]) -> b
 loop = \stateInit, runIteration ->
@@ -169,14 +171,3 @@ okOrCrash = \result, crashMsg ->
         Ok value -> value
         _ -> crash crashMsg
 
-okOr : Result a err, (err -> a) -> a
-okOr = \result, xformErr ->
-    when result is
-        Ok a -> a
-        Err e -> xformErr e
-
-okOrTry : Result a err, (err -> Result a err) -> Result a err
-okOrTry = \result, xformErr ->
-    when result is
-        Ok a -> Ok a
-        Err e -> xformErr e
