@@ -16,59 +16,23 @@ ConjunctionState := Dict Str Pulse
 Pulse : [Low, High]
 OutputPulse : [Sends Pulse, None]
 
-expect
-    testInput =
-        """
-        broadcaster -> a, b, c
-        %a -> b
-        %b -> c
-        %c -> inv
-        &inv -> a
-
-        """
-    result =
-        testInput
-        |> parse
-        |> Result.map solve
-    exptResult = 32000000
-    result == Ok exptResult
-
-expect
-    testInput =
-        """
-        broadcaster -> a
-        %a -> inv, con
-        &inv -> b
-        %b -> con
-        &con -> output
-        """
-    result =
-        testInput
-        |> parse
-        |> Result.map solve
-    exptResult = 11687500
-    result == Ok exptResult
-
 solve : List Module -> Nat
 solve = \modules ->
     circuit = initCircuit modules
     statesInit = initStates modules
-    pulseCountsInit = { lows: 0, highs: 0 }
 
-    (_, { lows: lowsTotal, highs: highsTotal }) =
-        (statesMid, pulseCountsMid), _iterNum <-
-            List.range { start: At 0, end: Length 1000 }
-            |> List.walk (statesInit, pulseCountsInit)
+    (statesMid, buttonPushCountMid) <- loop (statesInit, 1)
 
-        (nextStates, localQueue) = runCircuit statesMid circuit
-        nextPulseCounts = {
-            lows: pulseCountsMid.lows + (localQueue |> List.countIf (\m -> m.pulse == Low)),
-            highs: pulseCountsMid.highs + (localQueue |> List.countIf (\m -> m.pulse == High)),
-        }
-
-        (nextStates, nextPulseCounts)
-
-    lowsTotal * highsTotal
+    (nextStates, localQueue) = runCircuit statesMid circuit
+    if
+        localQueue
+        |> List.findFirst
+            (\{ from: _, to, pulse } -> to == "rx" && pulse == Low)
+        |> Result.isOk
+    then
+        Break buttonPushCountMid
+    else
+        Continue (nextStates, buttonPushCountMid + 1)
 
 runCircuit : ModuleStates, ModuleIndex -> (ModuleStates, List PulseQueueItem)
 runCircuit = \statesInit, circuit ->
