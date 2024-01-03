@@ -1,6 +1,4 @@
-# references
-# - https://github.com/roc-lang/examples/tree/main/examples/CommandLineArgs
-app "day"
+app "main"
     packages {
         pf: "https://github.com/roc-lang/basic-cli/releases/download/0.7.0/bkGby8jb0tmZYsy2hg1E_B2QrCgcSTxdUlHtETwm5m4.tar.br",
     }
@@ -11,7 +9,15 @@ main : Task.Task {} I32
 main =
     Stdout.line "w/e"
 
-Position num: {x: I32, y: I32}
+# Make a type with no type parameters...
+Position : { x : I32, y : I32 }
+# ...then make a mew type, using the first incorrectly by providing a single
+# type parameter.
+Polyline : List (Position I64) # mistake: should be `List Position`
 
-negate : Position I32 -> Position I32
-negate = {x, y} -> {x: -x, y: -y}
+# Then make an expectation using the invalid type
+id : Polyline -> Polyline
+id = \line -> line
+
+expect
+    id [] |> List.isEmpty
