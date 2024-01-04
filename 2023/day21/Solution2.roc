@@ -7,28 +7,26 @@ interface Solution2
 Position : { x : Nat, y : Nat }
 Cardinal : [North, South, East, West]
 
-expect
-    testInput =
-        """
-        ...........
-        .....###.#.
-        .###.##..#.
-        ..#.#...#..
-        ....#.#....
-        .##..S####.
-        .##..#...#.
-        .......##..
-        .##.#.####.
-        .##..##.##.
-        ...........
+testInput =
+    """
+    ...........
+    .....###.#.
+    .###.##..#.
+    ..#.#...#..
+    ....#.#....
+    .##..S####.
+    .##..#...#.
+    .......##..
+    .##.#.####.
+    .##..##.##.
+    ...........
 
-        """
-    result =
-        testInput
-        |> parse
-        |> Result.try (\x -> solve x 6)
-    exptResult = 16
-    result == Ok exptResult
+    """
+    |> parse
+    |> okOrCrash "broken test input"
+expect
+    result = testInput |> solve 6
+    result == Ok 16
 solve : Map, Nat -> Result Nat [GridWasEmpty, StartNotPresent]
 solve = \map, stepCount ->
     _bounds <- getBounds map |> Result.try
