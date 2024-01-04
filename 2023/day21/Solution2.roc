@@ -4,9 +4,71 @@ interface Solution2
         ParseInput.{ parse, Map, Tile },
     ]
 
+ValidatedMap := {map: Map, bounds: MapIndex, start: MapIndex}
+
+validateMap : Map
+    -> Result
+        ValidatedMap
+        [
+            GridWasEmpty,
+            StartNotPresent,
+            CardinalPathsFromStartAreBlocked,
+            PerimeterPathIsBlocked,
+        ]
+validateMap = \map ->
+    bounds <- getBounds map |> Result.try
+    start <- getMapStart map |> Result.try
+
+    # Check that cardinal tiles from start are all plots
+    isValid1 = 
+        List.range { start: At 0, end: Length bounds.y }
+        |> List.map (\y -> { start & y })
+        |> List.all (\pos -> getTile map pos |> okOrCrash "is valid pos" != Rock)
+
+    resultMid1 = if isValid1 then Ok {} else
+        Err CardinalPathsFromStartAreBlocked
+    _ <- resultMid1 |> Result.try
+
+    isValid2 = 
+        List.range { start: At 0, end: Length bounds.x }
+        |> List.map (\x -> { start & x })
+        |> List.all (\pos -> getTile map pos |> okOrCrash "is valid pos" != Rock)
+
+    resultMid2 = if isValid2 then Ok {} else
+        Err CardinalPathsFromStartAreBlocked
+    _ <- resultMid2 |> Result.try
+
+    # Check that perimeter tiles are all plots
+    isValid3 = 
+        List.range { start: At 0, end: Length bounds.y }
+        |> List.joinMap (\y -> [{ y, x: 0 }, {y, x: bounds.x - 1}])
+        |> List.all (\pos -> getTile map pos |> okOrCrash "is valid pos" != Rock)
+
+    resultMid3 = if isValid3 then Ok {} else
+        Err PerimeterPathIsBlocked
+    _ <- resultMid3 |> Result.try
+        
+    isValid4 = 
+        List.range { start: At 0, end: Length bounds.x }
+        |> List.joinMap (\x -> [{ x, y: 0 }, {x, y: bounds.y - 1}])
+        |> List.all (\pos -> getTile map pos |> okOrCrash "is valid pos" != Rock)
+
+    resultMid4 = if isValid4 then Ok {} else
+        Err PerimeterPathIsBlocked
+    _ <- resultMid4 |> Result.try
+
+    {start, bounds, map} |> @ValidatedMap |> Ok
+
+
 Position : { x : I32, y : I32 }
-Bounds : { x : Nat, y : Nat }
+MapIndex : { x : Nat, y : Nat }
 Cardinal : [North, South, East, West]
+
+mapIndexToPos : MapIndex -> Position
+mapIndexToPos = \{ x, y } -> { x: Num.toI32 x, y: Num.toI32 y }
+
+posToMapIndex : Position -> MapIndex
+posToMapIndex = \{ x, y } -> { x: Num.toNat x, y: Num.toNat y }
 
 testInput =
     """
@@ -53,50 +115,61 @@ expect
     stepCount = 5000
     result = testInput |> solve stepCount
     result == Ok 18807440
-solve : Map, Nat -> Result Nat [GridWasEmpty, StartNotPresent]
-solve = \map, stepCount ->
-    _bounds <- getBounds map |> Result.try
-    posStart <- getMapStart map |> Result.map
+solve : Map, Nat -> Result Nat _
+solve = \mapRaw, stepCount ->
+    vmap <- validateMap mapRaw |> Result.map
+    countTotalFillFromStart vmap stepCount
 
-    (_, postionsFinal, _) =
-        (positionsMid, positionSetMid, lastPositionSetMid), _loopCount <-
-            List.range { start: At 0, end: Length stepCount }
-            |> List.walk (
-                [posStart],
-                Set.empty {} |> Set.insert posStart,
-                Set.empty {},
-            )
-        nextPositions =
-            bfsStep map positionsMid
-            |> okOrCrash "already checked map has bounds"
-            |> Set.toList
-            |> List.dropIf (\p -> Set.contains lastPositionSetMid p)
+countTotalFillFromStart : ValidatedMap, Nat -> Nat
+countTotalFillFromStart = \vmap, stepCount ->
+    centerFill = countCenterFill vmap stepCount
+    (_, fillToEdges) = 
+        (vm, fillMid), _ <- [0, 1, 2, 3] |> List.walk (vmap, 0)
 
-        nextPositionSet = nextPositions |> List.walk lastPositionSetMid Set.insert
-        (nextPositions, nextPositionSet, positionSetMid)
+        (
+            vm |> rotateMap,
+            fillMid + countFillInSouthEastFromStart vm stepCount,
+        )
+    centerFill + fillToEdges
 
-    Set.len postionsFinal
+countFillInSouthEastFromStart : ValidatedMap, Nat -> Nat
 
-bfsStep : Map, List Position -> Result (Set Position) [GridWasEmpty]
-bfsStep = \map, poss ->
+countCenterFill : ValidatedMap, Nat -> Nat
+
+rotateMap : ValidatedMap -> ValidatedMap
+
+countStepsToCrossBorder : ValidatedMap, MapIndex, ([North, South, Middle], [East, West, Middle]) -> Nat
+
+countFillsAndStepsToFill : ValidatedMap, MapIndex -> ({ even : Nat, odd : Nat }, Nat)
+
+countSingleFillAfterSteps : ValidatedMap, MapIndex, Nat -> Nat
+
+getCardinalPos : ValidatedMap, Cardinal -> MapIndex
+
+bfsStep : ValidatedMap, List Position -> Set Position
+bfsStep = \vmap, poss ->
     resultInit = Set.empty {}
-    resultMid, pos <- poss |> List.walkTry resultInit
-    posAdjs <- bfsFromPos map pos |> Result.map
+    resultMid, pos <- poss |> List.walk resultInit
+    posAdjs = bfsFromPos vmap pos
     posAdjs |> List.walk resultMid Set.insert
 
-bfsFromPos : Map, Position -> Result (List Position) [GridWasEmpty]
-bfsFromPos = \map, pos ->
-    bounds <- getBounds map |> Result.map
+bfsFromPos : ValidatedMap, Position -> List Position
+bfsFromPos = \@ValidatedMap {map, bounds, start: _}, pos ->
     { x, y } <- getPosAdjs bounds pos |> List.dropIf
 
     map
-    |> List.get (y |> remEuclid (bounds.y |> Num.toI32) |> Num.toNat)
-    |> okOrCrash "already checked pos is within bounds"
-    |> List.get (x |> remEuclid (bounds.x |> Num.toI32) |> Num.toNat)
+    |> getTile {
+        x: x |> remEuclid (bounds.x |> Num.toI32) |> Num.toNat,
+        y: y |> remEuclid (bounds.y |> Num.toI32) |> Num.toNat,
+    }
     |> okOrCrash "already checked pos is within bounds"
     == Rock
 
-getMapStart : Map -> Result Position [StartNotPresent]
+getTile : Map, MapIndex -> Result Tile _
+getTile = \map, { x, y } ->
+    List.get map y |> Result.try (\row -> row |> List.get x)
+
+getMapStart : Map -> Result MapIndex [StartNotPresent]
 getMapStart = \map ->
     rows <- loop map
     when rows is
@@ -105,10 +178,10 @@ getMapStart = \map ->
             rowsRest = rows |> List.dropLast 1
             y = rows |> List.len |> Num.sub 1
             when lastRow |> List.findFirstIndex (\tile -> tile == Start) is
-                Ok x -> { x: x |> Num.toI32, y: y |> Num.toI32 } |> Ok |> Break
+                Ok x -> { x, y } |> Ok |> Break
                 Err _ -> Continue rowsRest
 
-getBounds : Map -> Result Bounds [GridWasEmpty]
+getBounds : Map -> Result MapIndex [GridWasEmpty]
 getBounds = \map ->
     when map is
         [row1, ..] -> Ok { x: List.len row1, y: List.len map }
@@ -126,11 +199,11 @@ divFloor : Int a, Int a -> Int a
 divFloor = \x, d ->
     x |> Num.neg |> Num.divCeil d |> Num.neg
 
-getPosAdjs : Bounds, Position -> List Position
+getPosAdjs : MapIndex, Position -> List Position
 getPosAdjs = \bounds, pos ->
     [North, South, East, West] |> List.map (\dir -> posToThe bounds pos dir)
 
-posToThe : Bounds, Position, Cardinal -> Position
+posToThe : MapIndex, Position, Cardinal -> Position
 posToThe = \{ x: boundX, y: boundY }, { x, y }, dir ->
     when dir is
         North -> { y: y - 1, x }
