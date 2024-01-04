@@ -4,7 +4,8 @@ interface Solution2
         ParseInput.{ parse, Map, Tile },
     ]
 
-Position : { x : Nat, y : Nat }
+Position : { x : I32, y : I32 }
+Bounds : { x : Nat, y : Nat }
 Cardinal : [North, South, East, West]
 
 testInput =
@@ -25,8 +26,33 @@ testInput =
     |> parse
     |> okOrCrash "broken test input"
 expect
-    result = testInput |> solve 6
+    stepCount = 6
+    result = testInput |> solve stepCount
     result == Ok 16
+expect
+    stepCount = 10
+    result = testInput |> solve stepCount
+    result == Ok 50
+expect
+    stepCount = 50
+    result = testInput |> solve stepCount
+    result == Ok 1594
+expect
+    stepCount = 100
+    result = testInput |> solve stepCount
+    result == Ok 6536
+expect
+    stepCount = 500
+    result = testInput |> solve stepCount
+    result == Ok 167004
+expect
+    stepCount = 1000
+    result = testInput |> solve stepCount
+    result == Ok 668697
+expect
+    stepCount = 5000
+    result = testInput |> solve stepCount
+    result == Ok 16733044
 solve : Map, Nat -> Result Nat [GridWasEmpty, StartNotPresent]
 solve = \map, stepCount ->
     _bounds <- getBounds map |> Result.try
@@ -55,9 +81,9 @@ bfsFromPos = \map, pos ->
     { x, y } <- getPosAdjs bounds pos |> List.dropIf
 
     map
-    |> List.get y
+    |> List.get (y |> remEuclid (bounds.y |> Num.toI32) |> Num.toNat)
     |> okOrCrash "already checked pos is within bounds"
-    |> List.get x
+    |> List.get (x |> remEuclid (bounds.x |> Num.toI32) |> Num.toNat)
     |> okOrCrash "already checked pos is within bounds"
     == Rock
 
@@ -70,10 +96,10 @@ getMapStart = \map ->
             rowsRest = rows |> List.dropLast 1
             y = rows |> List.len |> Num.sub 1
             when lastRow |> List.findFirstIndex (\tile -> tile == Start) is
-                Ok x -> { x, y } |> Ok |> Break
+                Ok x -> { x: x |> Num.toI32, y: y |> Num.toI32 } |> Ok |> Break
                 Err _ -> Continue rowsRest
 
-getBounds : Map -> Result Position [GridWasEmpty]
+getBounds : Map -> Result Bounds [GridWasEmpty]
 getBounds = \map ->
     when map is
         [row1, ..] -> Ok { x: List.len row1, y: List.len map }
@@ -81,29 +107,27 @@ getBounds = \map ->
 
 # ##############################################################################
 
-getPosAdjs : Position, Position -> List Position
-getPosAdjs = \bounds, pos ->
-    [North, South, East, West]
-    |> List.keepOks (\dir -> posToThe bounds pos dir)
+expect remEuclid 10 3 == 1
+expect remEuclid -10 3 == 2
+remEuclid : Int a, Int a -> Int a
+remEuclid = \x, mod ->
+    x - (x |> divFloor mod |> Num.mul mod)
 
-posToThe : Position, Position, Cardinal -> Result Position [OutOfBounds]
+divFloor : Int a, Int a -> Int a
+divFloor = \x, d ->
+    x |> Num.neg |> Num.divCeil d |> Num.neg
+
+getPosAdjs : Bounds, Position -> List Position
+getPosAdjs = \bounds, pos ->
+    [North, South, East, West] |> List.map (\dir -> posToThe bounds pos dir)
+
+posToThe : Bounds, Position, Cardinal -> Position
 posToThe = \{ x: boundX, y: boundY }, { x, y }, dir ->
     when dir is
-        North ->
-            newY <- Num.subChecked y 1 |> Result.mapErr (\_ -> OutOfBounds) |> Result.map
-            { y: newY, x }
-
-        South ->
-            newY <- Num.addChecked y 1 |> Result.mapErr (\_ -> OutOfBounds) |> Result.try
-            if newY >= boundY then Err OutOfBounds else Ok { y: newY, x }
-
-        West ->
-            newX <- Num.subChecked x 1 |> Result.mapErr (\_ -> OutOfBounds) |> Result.map
-            { y, x: newX }
-
-        East ->
-            newX <- Num.addChecked x 1 |> Result.mapErr (\_ -> OutOfBounds) |> Result.try
-            if newX >= boundX then Err OutOfBounds else Ok { y, x: newX }
+        North -> { y: y - 1, x }
+        South -> { y: y + 1, x }
+        West -> { y, x: x - 1 }
+        East -> { y, x: x + 1 }
 
 # ##############################################################################
 
