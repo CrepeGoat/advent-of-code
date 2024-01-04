@@ -58,15 +58,24 @@ solve = \map, stepCount ->
     _bounds <- getBounds map |> Result.try
     posStart <- getMapStart map |> Result.map
 
-    postionsFinal =
-        positionsMid, _loopCount <-
+    (_, postionsFinal, _) =
+        (positionsMid, positionSetMid, lastPositionSetMid), _loopCount <-
             List.range { start: At 0, end: Length stepCount }
-            |> List.walk [posStart]
-        bfsStep map positionsMid
-        |> okOrCrash "already checked map has bounds"
-        |> Set.toList
+            |> List.walk (
+                [posStart],
+                Set.empty {} |> Set.insert posStart,
+                Set.empty {},
+            )
+        nextPositions =
+            bfsStep map positionsMid
+            |> okOrCrash "already checked map has bounds"
+            |> Set.toList
+            |> List.dropIf (\p -> Set.contains lastPositionSetMid p)
 
-    List.len postionsFinal
+        nextPositionSet = nextPositions |> List.walk lastPositionSetMid Set.insert
+        (nextPositions, nextPositionSet, positionSetMid)
+
+    Set.len postionsFinal
 
 bfsStep : Map, List Position -> Result (Set Position) [GridWasEmpty]
 bfsStep = \map, poss ->
