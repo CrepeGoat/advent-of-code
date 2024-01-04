@@ -11,15 +11,15 @@ Cardinal : [North, South, East, West]
 testInput =
     """
     ...........
-    .....###.#.
-    .###.##..#.
+    ......##.#.
+    .###..#..#.
     ..#.#...#..
     ....#.#....
-    .##..S####.
-    .##..#...#.
+    .....S.....
+    .##......#.
     .......##..
     .##.#.####.
-    .##..##.##.
+    .##...#.##.
     ...........
 
     """
@@ -28,31 +28,31 @@ testInput =
 expect
     stepCount = 6
     result = testInput |> solve stepCount
-    result == Ok 16
+    result == Ok 36
 expect
     stepCount = 10
     result = testInput |> solve stepCount
-    result == Ok 50
+    result == Ok 90
 expect
     stepCount = 50
     result = testInput |> solve stepCount
-    result == Ok 1594
+    result == Ok 1940
 expect
     stepCount = 100
     result = testInput |> solve stepCount
-    result == Ok 6536
+    result == Ok 7645
 expect
     stepCount = 500
     result = testInput |> solve stepCount
-    result == Ok 167004
+    result == Ok 188756
 expect
     stepCount = 1000
     result = testInput |> solve stepCount
-    result == Ok 668697
+    result == Ok 753480
 expect
     stepCount = 5000
     result = testInput |> solve stepCount
-    result == Ok 16733044
+    result == Ok 18807440
 solve : Map, Nat -> Result Nat [GridWasEmpty, StartNotPresent]
 solve = \map, stepCount ->
     _bounds <- getBounds map |> Result.try
