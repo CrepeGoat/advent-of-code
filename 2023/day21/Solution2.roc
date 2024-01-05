@@ -133,18 +133,146 @@ countTotalFillFromStart = \vmap, stepCount ->
     centerFill + fillToEdges
 
 countFillInSouthEastFromStart : ValidatedMap, Nat -> Nat
+countFillInSouthEastFromStart = \vmap, stepCount ->
+    @ValidatedMap{start, bounds, map} = vmap
+
+    stepsToSouth = countStepsToCrossBorder bounds start South
+    posNorthEntrance = getCardinalPos vmap North
+    stepsToSouthFromNorth =
+        countStepsToCrossBorder bounds posNorthEntrance South
+    
+    stepsToEast = countStepsToCrossBorder bounds posNorthEntrance East
+    posNorthwestEntrance = {x: 0, y: 0}
+    stepsToEastFromNorthwest =
+        countStepsToCrossBorder bounds posNorthwestEntrance East
+
+    if stepCount < stepsToSouth then
+        0
+    else
+        (stepsLeftMid, fillCountMid) <- loop (stepCount - stepsToSouth, 0)
+        
+        fillCountHere =
+            countSingleFillAfterSteps vmap posNorthEntrance stepsLeftMid
+        
+        fillCountTotalEast =
+            if stepsLeftMid < stepsToEast then
+                0
+            else
+                (stepsLeftMid2, fillCountMid2) <- loop (stepCount - stepsToEast, 0)
+                fillCountHere2 =
+                    countSingleFillAfterSteps vmap posNorthwestEntrance stepsLeftMid2
+                fillCountNext2 = fillCountMid2 + fillCountHere2
+
+                if stepsLeftMid2 < stepsToEastFromNorthwest then
+                    Break fillCountNext2
+                else
+                    Continue (stepsLeftMid2 - stepsToEastFromNorthwest, fillCountNext2)
+
+        
+        fillCountNext = fillCountMid + fillCountHere + fillCountTotalEast
+        if stepsLeftMid < stepsToSouthFromNorth then
+            Break fillCountNext
+        else
+            Continue (stepsLeftMid - stepsToSouthFromNorth, fillCountNext)
+
 
 countCenterFill : ValidatedMap, Nat -> Nat
+countCenterFill = \vmap, stepCount ->
+    @ValidatedMap {start, map: _, bounds: _} = vmap
+    countSingleFillAfterSteps vmap start stepCount
 
 rotateMap : ValidatedMap -> ValidatedMap
+rotateMap = \vmap -> vmap |> transposeMap |> flipMapAlongY
 
-countStepsToCrossBorder : ValidatedMap, MapIndex, ([North, South, Middle], [East, West, Middle]) -> Nat
+transposeMap = \@ValidatedMap{map, start, bounds} ->
+    @ValidatedMap {start: {x: start.y, y: start.x}, bounds: {x: bounds.y, y: bounds.x}, map: transpose map}
 
-countFillsAndStepsToFill : ValidatedMap, MapIndex -> ({ even : Nat, odd : Nat }, Nat)
+
+
+flipMapAlongY = \@ValidatedMap{map, start, bounds} ->
+    @ValidatedMap{
+        bounds,
+        start: {start & y: bounds.y - 1 - start.y},
+        map: List.reverse map
+    }
+
+countStepsToCrossBorder : MapIndex, MapIndex, ([South, East]) -> Nat
+countStepsToCrossBorder = \bounds, {x, y}, dirToBorder ->
+    when dirToBorder is
+        East -> bounds.x - x
+        South -> bounds.y - y
 
 countSingleFillAfterSteps : ValidatedMap, MapIndex, Nat -> Nat
+countSingleFillAfterSteps = \vmap, posStart, stepCount ->
+    (loopCount, nextPositions, positionSetNext, positionSetMid, positionSetPrev) <-
+    bfsHelper vmap posStart
+
+    if loopCount == stepCount then
+        positionSetMid |> Set.len |> Break
+    else if nextPositions |> List.isEmpty then
+        (
+            if loopCount % 2 == stepCount % 2 then
+                positionSetMid
+            else positionSetPrev
+        )
+        |> Set.len |> Break
+    else
+        Continue
+
+countFillsAndStepsToFill : ValidatedMap, MapIndex -> ({ even : Nat, odd : Nat }, Nat)
+countFillsAndStepsToFill = \vmap, posStart ->
+    (loopCount, nextPositions, positionSetNext, positionSetMid, positionSetPrev) <-
+    bfsHelper vmap posStart
+
+    if List.isEmpty nextPositions then
+        fillCount = positionSetMid |> Set.len
+        prevFillCount = positionSetPrev |> Set.len
+        fillCounts =
+            if loopCount % 2 == 1 then
+                {odd: fillCount, even: prevFillCount}
+            else
+                {even: fillCount, odd: prevFillCount}
+        Break (fillCounts, loopCount)
+    else Continue
 
 getCardinalPos : ValidatedMap, Cardinal -> MapIndex
+getCardinalPos = \@ValidatedMap {map, start, bounds}, dir ->
+    when dir is
+        North -> {start & y: 0}
+        South -> {start & y: bounds.y - 1}
+        West -> {start & x: 0}
+        East -> {start & x: bounds.x - 1}
+
+# ##############################################################################
+
+bfsHelper : ValidatedMap, MapIndex, (Nat, _, _, _, _ -> [Continue, Break a]) -> a
+bfsHelper = \vmap, posStart, innerFunc ->
+    (loopCount, positionsMid, positionSetMid, positionSetPrev) <-
+        loop (
+            0
+            [posStart],
+            Set.empty {} |> Set.insert posStart,
+            Set.empty {},
+        )
+    nextPositions =
+        bfsStep map positionsMid
+        |> okOrCrash "already checked map has bounds"
+        |> Set.toList
+        |> List.dropIf (\p -> Set.contains positionSetPrev p)
+    positionSetNext = nextPositions |> List.walk positionSetPrev Set.insert
+
+    result =
+        innerFunc
+            loopCount
+            nextPositions
+            positionSetNext
+            positionSetMid
+            positionSetPrev
+    when result is
+        Continue ->
+            (loopCount + 1, nextPositions, positionSetNext, positionSetMid)
+            |> Continue
+        Break x -> Break x
 
 bfsStep : ValidatedMap, List Position -> Set Position
 bfsStep = \vmap, poss ->
@@ -212,6 +340,20 @@ posToThe = \{ x: boundX, y: boundY }, { x, y }, dir ->
         East -> { y, x: x + 1 }
 
 # ##############################################################################
+
+expect
+    listlist = [[1, 2, 3], [4, 5, 6]]
+    listlistT = [[1, 4], [2, 5], [3, 6]]
+    transpose listlist == listlistT
+transpose : List (List a) -> List (List a)
+transpose = \listlist ->
+    when listlist is
+        [] -> []
+        [list1, ..] ->
+            resultInit = list1 |> List.map List.single
+            resultMid, listN <- listlist |> List.dropFirst 1 |> List.walk resultInit
+            subResultMid, listNItem <- List.map2 resultMid listN
+            List.append subResultMid listNItem
 
 loop : state, (state -> [Break b, Continue state]) -> b
 loop = \stateInit, runIteration ->
