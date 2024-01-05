@@ -254,11 +254,6 @@ bfsHelper = \vmap, posStart, innerFunc ->
             Set.empty {} |> Set.insert posStart,
             Set.empty {},
         )
-    nextPositions =
-        bfsStep map positionsMid
-        |> okOrCrash "already checked map has bounds"
-        |> Set.toList
-        |> List.dropIf (\p -> Set.contains positionSetPrev p)
     positionSetNext = nextPositions |> List.walk positionSetPrev Set.insert
 
     result =
