@@ -6,21 +6,27 @@ interface Heap
         toList,
         push,
         pop,
-        popAll,
+        heapify,
+        deHeapify,
+        heapSort,
         toBinCmp,
     ]
     imports []
 
 expect
     heap = empty Num.compare |> push 1 |> push 5 |> push 3 |> push 2 |> push 4
-    heap |> popAll == [1, 2, 3, 4, 5]
+    heap |> deHeapify == [1, 2, 3, 4, 5]
 expect
     heap = empty Num.compare |> push 1 |> push 3 |> push 3 |> push 1
-    heap |> popAll == [1, 1, 3, 3]
+    heap |> deHeapify == [1, 1, 3, 3]
 Heap a := { heap : List a, cmp : a, a -> [LEQ, GT] }
 
 empty : (a, a -> [LT, EQ, GT]) -> Heap a
 empty = \cmp -> @Heap { heap: [], cmp: cmp |> toBinCmp }
+
+heapSort : List a, (a, a -> [LT, EQ, GT]) -> List a
+heapSort = \items, cmp ->
+    items |> heapify cmp |> deHeapify
 
 len : Heap * -> Nat
 len = \@Heap { heap, cmp: _ } -> List.len heap
@@ -30,8 +36,8 @@ toList = \@Heap { heap, cmp } -> heap
 
 push : Heap a, a -> Heap a
 push = \@Heap { heap, cmp }, item ->
-    @Heap { cmp, heap: heap |> List.append item }
-    |> bubbleTailUp
+    index = List.len heap
+    @Heap { cmp, heap: heap |> List.append item } |> bubbleUpFrom index
 
 pop : Heap a -> Result (Heap a, a) _
 pop = \@Heap { heap, cmp } ->
@@ -40,14 +46,27 @@ pop = \@Heap { heap, cmp } ->
         heap
         |> List.swap 0 ((List.len heap) - 1)
         |> List.dropLast 1
-    (@Heap { cmp, heap: newList } |> bubbleHeadDown, itemFirst)
+    (@Heap { cmp, heap: newList } |> bubbleDownFrom 0, itemFirst)
 
-popAll : Heap a -> List a
-popAll = \heap ->
+deHeapify : Heap a -> List a
+deHeapify = \heap ->
     (heapMid, resultMid) <- loop (heap, [])
     when pop heapMid is
         Err _ -> Break resultMid
         Ok (heapNext, item) -> Continue (heapNext, resultMid |> List.append item)
+
+heapify : List a, (a, a -> [LT, EQ, GT]) -> Heap a
+heapify = \items, cmp ->
+    heapInit = @Heap { heap: items, cmp: cmp |> toBinCmp }
+    when heapInit |> len |> Num.subChecked 1 |> Result.try indexUp is
+        Err _ -> heapInit
+        Ok indexInit ->
+            (heapMid, indexMid) <- loop (heapInit, indexInit)
+            heapNext = heapMid |> bubbleDownFrom indexMid
+            if indexMid == 0 then
+                Break heapNext
+            else
+                Continue (heapNext, indexMid - 1)
 
 toBinCmp : (a, a -> [LT, EQ, GT]) -> (a, a -> [LEQ, GT])
 toBinCmp = \cmp ->
@@ -58,10 +77,9 @@ toBinCmp = \cmp ->
 
 # ##############################################################################
 
-bubbleTailUp : Heap a -> Heap a
-bubbleTailUp = \heap ->
-    indexTail = (len heap) - 1
-    (heapMid, indexPrev) <- loop (heap, indexTail)
+bubbleUpFrom : Heap a, Nat -> Heap a
+bubbleUpFrom = \heap, index ->
+    (heapMid, indexPrev) <- loop (heap, index)
 
     when indexUp indexPrev is
         Err _ -> Break heapMid
@@ -74,13 +92,13 @@ bubbleTailUp = \heap ->
                         crash "started with valid index, moved up, confirmed non-negative"
             Continue (heapNext, indexNext)
 
-bubbleHeadDown : Heap a -> Heap a
-bubbleHeadDown = \heap ->
-    (heapMid, indexPrev) <- loop (heap, 0)
+bubbleDownFrom : Heap a, Nat -> Heap a
+bubbleDownFrom = \heap, index ->
+    (heapMid, indexMid) <- loop (heap, index)
 
-    when bubbleAbout heapMid indexPrev is
+    when bubbleAbout heapMid indexMid is
         Ok Same | Err _ -> Break heapMid
-        Ok (Swapped h i) -> Continue (h, i)
+        Ok (Swapped h indexNext) -> Continue (h, indexNext)
 
 bubbleAbout : Heap a, Nat -> Result [Same, Swapped (Heap a) Nat] _
 bubbleAbout = \@Heap { heap, cmp }, index ->
@@ -90,27 +108,30 @@ bubbleAbout = \@Heap { heap, cmp }, index ->
 
     leafNodes = List.sublist heap { start: indexLeft, len: 2 }
     cmpToBase = leafNodes |> List.map (\x -> cmp node x)
-    cmpBoth =
-        nodeLeft <- List.first leafNodes |> Result.try
-        nodeRight <- List.last leafNodes |> Result.map
-        cmp nodeLeft nodeRight
+    cmps =
+        when (leafNodes, cmpToBase) is
+            ([x1, x2], [GT, GT]) -> [GT, GT, cmp x1 x2]
+            _ -> cmpToBase
 
-    when (cmpToBase, cmpBoth) is
-        ([], _) | ([LEQ], _) | ([LEQ, LEQ], _) -> Same
-        ([GT], _) | ([GT, LEQ], _) | ([GT, GT], Ok LEQ) ->
+    when cmps is
+        [] | [LEQ] | [LEQ, LEQ] -> Same
+        [GT] | [GT, LEQ] | [GT, GT, LEQ] ->
             Swapped
                 (@Heap { cmp, heap: heap |> List.swap index indexLeft })
                 indexLeft
 
-        ([LEQ, GT], _) | ([GT, GT], Ok GT) ->
+        [LEQ, GT] | [GT, GT, GT] ->
             Swapped
                 (@Heap { cmp, heap: heap |> List.swap index indexRight })
                 indexRight
 
-        # TODO compiler bug?
-        # should be: ([_, _], Err _) -> crash "can't Err on 2 elements"
-        ([_, _], _) -> crash "can't Err on 2 elements"
-        ([_, _, _, ..], _) -> crash "at most 2 leaf elements"
+        [GT, GT] ->
+            crash "if both branches are smaller, an extra compare is added"
+
+        [LEQ, LEQ, ..] | [LEQ, GT, ..] | [GT, LEQ, ..] ->
+            crash "only get 3 compares when both branches are smaller"
+
+        [_, _, _, _, ..] -> crash "cannot get 4 or more items"
 
 indexUp : Nat -> Result Nat [NoHigherNode]
 indexUp = \index ->
@@ -125,6 +146,13 @@ indexDownLeft = \index -> index * 2 + 1
 
 indexDownRight : Nat -> Nat
 indexDownRight = \index -> (index + 1) * 2
+
+loopWithIndex : state, (state, Nat -> [Break b, Continue state]) -> b
+loopWithIndex = \stateInit, runIteration ->
+    (stateMid, loopCount) <- loop (stateInit, 0)
+    when runIteration stateMid loopCount is
+        Continue stateNext -> Continue (stateNext, loopCount + 1)
+        Break result -> Break result
 
 loop : state, (state -> [Break b, Continue state]) -> b
 loop = \stateInit, runIteration ->
