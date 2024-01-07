@@ -32,7 +32,7 @@ len : Heap * -> Nat
 len = \@Heap { heap, cmp: _ } -> List.len heap
 
 toList : Heap a -> List a
-toList = \@Heap { heap, cmp } -> heap
+toList = \@Heap { heap, cmp: _ } -> heap
 
 push : Heap a, a -> Heap a
 push = \@Heap { heap, cmp }, item ->
@@ -133,15 +133,8 @@ indexUp = \index ->
 getIndexDownLeft : Nat -> Nat
 getIndexDownLeft = \index -> index * 2 + 1
 
-getIndexDownRight : Nat -> Nat
-getIndexDownRight = \index -> (index + 1) * 2
-
-loopWithIndex : state, (state, Nat -> [Break b, Continue state]) -> b
-loopWithIndex = \stateInit, runIteration ->
-    (stateMid, loopCount) <- loop (stateInit, 0)
-    when runIteration stateMid loopCount is
-        Continue stateNext -> Continue (stateNext, loopCount + 1)
-        Break result -> Break result
+# getIndexDownRight : Nat -> Nat
+# getIndexDownRight = \index -> (index + 1) * 2
 
 loop : state, (state -> [Break b, Continue state]) -> b
 loop = \stateInit, runIteration ->

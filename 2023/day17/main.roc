@@ -12,9 +12,3 @@ main =
     listSorted = Heap.heapSort list Num.compare
     # listSorted |> List.map Num.toStr |> Str.joinWith "\n" |> Stdout.line
     Stdout.line "heap sorting done!"
-
-loop : state, (state -> [Break b, Continue state]) -> b
-loop = \stateInit, runIteration ->
-    when runIteration stateInit is
-        Continue state -> loop state runIteration
-        Break result -> result
