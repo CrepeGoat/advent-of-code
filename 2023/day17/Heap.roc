@@ -15,10 +15,12 @@ interface Heap
 
 expect
     heap = empty Num.compare |> push 1 |> push 5 |> push 3 |> push 2 |> push 4
-    heap |> deHeapify == [1, 2, 3, 4, 5]
+    result = heap |> deHeapify
+    result == [5, 4, 3, 2, 1]
 expect
     heap = empty Num.compare |> push 1 |> push 3 |> push 3 |> push 1
-    heap |> deHeapify == [1, 1, 3, 3]
+    result = heap |> deHeapify
+    result == [3, 3, 1, 1]
 Heap a := { heap : List a, cmp : a, a -> [LEQ, GT] }
 
 empty : (a, a -> [LT, EQ, GT]) -> Heap a
@@ -50,10 +52,18 @@ pop = \@Heap { heap, cmp } ->
 
 deHeapify : Heap a -> List a
 deHeapify = \heap ->
-    (heapMid, resultMid) <- loop (heap, [])
-    when pop heapMid is
-        Err _ -> Break resultMid
-        Ok (heapNext, item) -> Continue (heapNext, resultMid |> List.append item)
+    (@Heap { heap: result, cmp: _ }) =
+        (@Heap { heap: heapMid, cmp }, indexEnd) <- loop (heap, len heap)
+        if indexEnd <= 1 then
+            @Heap { heap: heapMid, cmp } |> Break
+        else
+            indexNext = indexEnd - 1
+            heapNext =
+                @Heap { heap: heapMid |> List.swap 0 indexNext, cmp }
+                |> bubbleDownWithin 0 indexNext
+            Continue (heapNext, indexNext)
+
+    result
 
 heapify : List a, (a, a -> [LT, EQ, GT]) -> Heap a
 heapify = \items, cmp ->
@@ -85,30 +95,48 @@ bubbleUpFrom = \heap, index ->
         Err _ -> Break heapMid
         Ok indexNext ->
             heapNext =
-                when bubbleAbout heapMid indexNext is
+                when bubbleAbout heapMid indexNext (len heapMid) is
                     Same -> heapMid
                     Swapped h _ -> h
             Continue (heapNext, indexNext)
+
+bubbleDownWithin : Heap a, Nat, Nat -> Heap a
+bubbleDownWithin = \heap, index, indexEnd ->
+    when indexEnd |> indexUp is
+        Err _ -> heap
+        Ok indexLast ->
+            (heapMid, indexMid) <- loop (heap, index)
+
+            if indexMid >= indexLast then
+                Break heapMid
+            else
+                when bubbleAbout heapMid indexMid indexEnd is
+                    Ok Same | Err _ -> Break heapMid
+                    Ok (Swapped heapNext indexNext) ->
+                        Continue (heapNext, indexNext)
 
 bubbleDownFrom : Heap a, Nat -> Heap a
 bubbleDownFrom = \heap, index ->
     (heapMid, indexMid) <- loop (heap, index)
 
-    when bubbleAbout heapMid indexMid is
+    when bubbleAbout heapMid indexMid (len heapMid) is
         Same -> Break heapMid
         Swapped h indexNext -> Continue (h, indexNext)
 
-bubbleAbout : Heap a, Nat -> [Same, Swapped (Heap a) Nat]
-bubbleAbout = \@Heap { heap, cmp }, index ->
+bubbleAbout : Heap a, Nat, Nat -> [Same, Swapped (Heap a) Nat]
+bubbleAbout = \@Heap { heap, cmp }, index, indexEnd ->
     indexLeft = getIndexDownLeft index
     indexRight = indexLeft + 1
 
-    if indexLeft >= List.len heap then
+    if indexLeft >= indexEnd then
         Same
     else
         node = heap |> List.get index |> okOrCrash "checked index"
 
-        leafNodes = List.sublist heap { start: indexLeft, len: 2 }
+        leafNodes =
+            List.sublist
+                heap
+                { start: indexLeft, len: Num.min 2 (indexEnd - indexLeft) }
         (indexCmp, leafCmp) =
             when leafNodes is
                 [x1, x2] if cmp x1 x2 == GT -> (indexRight, x2)
