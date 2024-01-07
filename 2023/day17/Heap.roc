@@ -111,8 +111,8 @@ bubbleDownWithin = \heap, index, indexEnd ->
                 Break heapMid
             else
                 when bubbleAbout heapMid indexMid indexEnd is
-                    Ok Same | Err _ -> Break heapMid
-                    Ok (Swapped heapNext indexNext) ->
+                    Same -> Break heapMid
+                    Swapped heapNext indexNext ->
                         Continue (heapNext, indexNext)
 
 bubbleDownFrom : Heap a, Nat -> Heap a
