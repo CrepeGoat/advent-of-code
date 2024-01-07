@@ -86,10 +86,8 @@ bubbleUpFrom = \heap, index ->
         Ok indexNext ->
             heapNext =
                 when bubbleAbout heapMid indexNext is
-                    Ok Same -> heapMid
-                    Ok (Swapped h _) -> h
-                    Err _ ->
-                        crash "started with valid index, moved up, confirmed non-negative"
+                    Same -> heapMid
+                    Swapped h _ -> h
             Continue (heapNext, indexNext)
 
 bubbleDownFrom : Heap a, Nat -> Heap a
@@ -97,41 +95,32 @@ bubbleDownFrom = \heap, index ->
     (heapMid, indexMid) <- loop (heap, index)
 
     when bubbleAbout heapMid indexMid is
-        Ok Same | Err _ -> Break heapMid
-        Ok (Swapped h indexNext) -> Continue (h, indexNext)
+        Same -> Break heapMid
+        Swapped h indexNext -> Continue (h, indexNext)
 
-bubbleAbout : Heap a, Nat -> Result [Same, Swapped (Heap a) Nat] _
+bubbleAbout : Heap a, Nat -> [Same, Swapped (Heap a) Nat]
 bubbleAbout = \@Heap { heap, cmp }, index ->
-    node <- heap |> List.get index |> Result.map
-    indexLeft = indexDownLeft index
-    indexRight = indexDownRight index
+    indexLeft = getIndexDownLeft index
+    indexRight = indexLeft + 1
 
-    leafNodes = List.sublist heap { start: indexLeft, len: 2 }
-    cmpToBase = leafNodes |> List.map (\x -> cmp node x)
-    cmps =
-        when (leafNodes, cmpToBase) is
-            ([x1, x2], [GT, GT]) -> [GT, GT, cmp x1 x2]
-            _ -> cmpToBase
+    if indexLeft >= List.len heap then
+        Same
+    else
+        node = heap |> List.get index |> okOrCrash "checked index"
 
-    when cmps is
-        [] | [LEQ] | [LEQ, LEQ] -> Same
-        [GT] | [GT, LEQ] | [GT, GT, LEQ] ->
-            Swapped
-                (@Heap { cmp, heap: heap |> List.swap index indexLeft })
-                indexLeft
-
-        [LEQ, GT] | [GT, GT, GT] ->
-            Swapped
-                (@Heap { cmp, heap: heap |> List.swap index indexRight })
-                indexRight
-
-        [GT, GT] ->
-            crash "if both branches are smaller, an extra compare is added"
-
-        [LEQ, LEQ, ..] | [LEQ, GT, ..] | [GT, LEQ, ..] ->
-            crash "only get 3 compares when both branches are smaller"
-
-        [_, _, _, _, ..] -> crash "cannot get 4 or more items"
+        leafNodes = List.sublist heap { start: indexLeft, len: 2 }
+        (indexCmp, leafCmp) =
+            when leafNodes is
+                [x1, x2] if cmp x1 x2 == GT -> (indexRight, x2)
+                [x1] | [x1, _] -> (indexLeft, x1)
+                [] -> crash "case already handled earlier"
+                [_, _, ..] -> crash "unreachable"
+        when cmp node leafCmp is
+            LEQ -> Same
+            GT ->
+                Swapped
+                    (@Heap { cmp, heap: heap |> List.swap index indexCmp })
+                    indexCmp
 
 indexUp : Nat -> Result Nat [NoHigherNode]
 indexUp = \index ->
@@ -141,11 +130,11 @@ indexUp = \index ->
     |> Num.subChecked 1
     |> Result.mapErr (\_ -> NoHigherNode)
 
-indexDownLeft : Nat -> Nat
-indexDownLeft = \index -> index * 2 + 1
+getIndexDownLeft : Nat -> Nat
+getIndexDownLeft = \index -> index * 2 + 1
 
-indexDownRight : Nat -> Nat
-indexDownRight = \index -> (index + 1) * 2
+getIndexDownRight : Nat -> Nat
+getIndexDownRight = \index -> (index + 1) * 2
 
 loopWithIndex : state, (state, Nat -> [Break b, Continue state]) -> b
 loopWithIndex = \stateInit, runIteration ->
